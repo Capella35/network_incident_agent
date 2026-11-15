@@ -1,0 +1,33 @@
+# Secrets
+.env
+
+# Data (fetched by script, never committed)
+data/*
+!data/README.md
+!data/manifest-template.md
+!data/manifest.json
+
+# Logs
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# MLflow / Spark local artifacts
+mlruns/
+mlartifacts/
+checkpoints/
+spark-warehouse/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
