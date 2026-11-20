@@ -39,7 +39,7 @@ Checked 2026-11-14 via the Harvard Dataverse API (dataset pages themselves retur
 
 ### Processing rules (decided 2026-11-14)
 - **Sum over country codes** per (square, interval): the project needs total load per cell, not callers' nationality.
-- **Empty field = 0 activity** for that measure.
+- **Empty field = 0 activity** for that measure. A source row whose fields are all empty is recorded zero activity, **not** a data gap.
 - **A missing (square, interval) row = 0 activity, flagged as a data gap**, so the detector and evals can tell real data gaps from injected faults.
 - Store timestamps in UTC; convert to Europe/Rome only for the seasonal baseline (hour of day, weekday) and for display.
 
@@ -48,7 +48,9 @@ Decided 2026-11-14: files are **downloaded manually in the browser** (the guestb
 
 A processing script then handles them **one day at a time**: check MD5 against the published value → filter to the chosen subset of grid squares → write the small processed file → record hashes in the manifest → optionally delete the raw file. Raw files can be downloaded in batches (e.g., a week at a time) to keep disk use low; the processed subset is small.
 
-**Subset:** a fixed, documented set of grid squares (e.g., a few hundred, chosen in Milestone 1 after checking laptop resources).
+**Subset (decided 2026-11-20):** the **12 × 12 block of 144 grid squares centred on square 5061**, the square nearest Milan's Duomo (9.1919 E, 45.4641 N). Sized for an 8 GB laptop. Grid IDs run row by row from the south-west corner (`id = row × 100 + col + 1`, verified from the grid file). Written by `make data` to `data/processed/subset.json`; rule in `src/producer/grid.py`.
+
+**Published checksums:** the file IDs, sizes, and MD5s of all 63 files (62 daily + grid), taken from the public Dataverse metadata API (no guestbook needed for metadata), are committed in `src/producer/milan_files.json` and used by `make data` to verify each manual download. Retrieved 2026-11-20.
 
 **Proposed time split** (9 weeks of data; to confirm in the Milestone 1 plan):
 - Training: 2013-11-04 → 2013-12-01 (4 weeks)

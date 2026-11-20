@@ -36,7 +36,7 @@ Set this up before any application code so every later step has tests, lint, and
 - **Tests:** loader rejects a duplicate KPI name, an unknown unit, and a bad ID pattern; the valid YAML loads.
 - **Done when:** no other module hard-codes an entity or KPI name (Rule 15); later steps import from here.
 
-### Step 3 — Verify + process script (`make data`) (~2 h)
+### Step 3 — Verify + process script (`make data`) (~2 h) — *done 2026-11-20*
 - `src/producer/data_prep.py`, run one day at a time:
   1. Check the file's **MD5 against the published value** (hard-coded list of expected MD5s per file ID, taken from Dataverse); also compute SHA-256. Mismatch → stop.
   2. Parse: tab-separated, no header, 8 columns; empty field = 0.
@@ -49,7 +49,7 @@ Set this up before any application code so every later step has tests, lint, and
 - **Tests:** small hand-written fixture files (not Milan data): country-code summing, empty → 0, gap filling, UTC handling, MD5 mismatch rejected, manifest entry written.
 - **Done when:** 2013-11-01 processes with 144 intervals per subset square; manifest has its entry; re-running gives the same SHA-256 for the output file.
 
-### Step 4 — Cell subset + topology generator (~1.5 h)
+### Step 4 — Cell subset + topology generator (~1.5 h) — *subset done 2026-11-20 (in `make data`); topology next*
 - **Subset:** a compact, contiguous block of grid squares in central Milan (so sites and aggregation nodes are geographically sensible). Size from Step 0: **~150 squares** (8 GB laptop; R5). Selection rule + list written to `data/processed/subset.json` and documented here.
 - **Topology (synthetic, seeded):** 1 square = 1 Cell; cells → Sites by proximity (~3 sectors per site); sites → AggregationNodes by k-means on location (~8–12 sites per node, enough for backhaul faults to span several sites); all AGG nodes → `CORE-1`. Seed and parameters committed in `src/producer/topology_config.yaml`.
 - Output: `data/processed/topology_nodes.csv`, `topology_edges.csv`, loaded into Postgres in Step 6.
@@ -111,4 +111,4 @@ Fault injection, detectors, `faults.yaml`, alarms, correlation, classifier, cons
 
 ## Status
 
-Started 2026-11-19. Steps 0–2 done; next: Step 3.
+Started 2026-11-19. Steps 0–3 done (2013-11-01 processed: 4,842,625 rows → 20,736; reproducible). Subset fixed (144 squares). Next: Step 4 topology generator.

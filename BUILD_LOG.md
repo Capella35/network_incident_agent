@@ -20,6 +20,27 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-20 — Milestone 1, step 3: verify + process (`make data`)
+
+**What was built:**
+- Branch protection on `main` (required CI checks, no force-push/deletion, linear history; admin bypass).
+- `src/producer/milan_files.json`: published file IDs, sizes, MD5s for all 63 Dataverse files (from the public metadata API).
+- `src/producer/integrity.py` (MD5 + SHA-256 in one pass, verify size + MD5), `grid.py` (centroids, 12 × 12 subset around the Duomo), `milan.py` (Polars streaming: sum over country codes, empty = 0, gap fill, UTC ms), `manifest.py` (atomic writes, stable keys), `data_prep.py` (CLI; skips up-to-date days; `--force`, `--delete-raw`, `--date`).
+- `make data` target. Dependency added: polars 2.1.0.
+
+**Tests run and results:**
+- `make check`: ruff, mypy strict clean; 37 tests passed; coverage 95%.
+- Real run on 2013-11-01: MD5 matches published (`658c49f8…`); 4,842,625 rows in → 20,736 out (144 squares × 144 intervals), 0 gaps, 0 out-of-day rows; 2.4 s, ~400 MB peak RAM.
+- Cross-check: awk sums for square 5061 at the first interval match the parquet values to 6 decimals.
+- Reproducibility: forced reprocess gives a byte-identical parquet (SHA-256 `a947728e…`); a plain rerun leaves `data/manifest.json` byte-identical.
+
+**Decisions made:** (also in DECISIONS.md)
+- Subset = 144 squares around square 5061. Published checksums committed. Polars + parquet. All-empty source row ≠ data gap. Branch protection settings.
+
+**Open items:**
+- Polars 2 gotchas hit: a list passed next to other expressions in `with_columns` is read as a literal (unpack with `*`); `pl.from_epoch(..., "ms")` returns µs (cast explicitly).
+- CI warns that `actions/checkout@v4` and `setup-uv@v5` run on deprecated Node 20; bump later.
+
 ## 2026-11-19 — Milestone 1, steps 0–2: resource check, tooling, domain model
 
 **What was built:**

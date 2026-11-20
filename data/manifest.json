@@ -1,0 +1,39 @@
+{
+  "files": {
+    "milano-grid.geojson": {
+      "dataverse_file_id": 2670806,
+      "downloaded_on": "2026-11-14",
+      "license": "ODbL-1.0",
+      "md5": "e64ed3858e97347c14cd049efde8c7d3",
+      "md5_matches_published": true,
+      "sha256": "c8b034bb0d544ba785550fac17ca65865a792c02543de302bb3faf561bb4efe0",
+      "size_bytes": 3168596,
+      "source_doi": "10.7910/DVN/QJWLFU",
+      "verified_at": "2026-11-20T08:17:57+00:00"
+    },
+    "sms-call-internet-mi-2013-11-01.txt": {
+      "dataverse_file_id": 2674255,
+      "downloaded_on": "2026-11-14",
+      "license": "ODbL-1.0",
+      "md5": "658c49f8e3c7910bd3bb2bafbf62cdce",
+      "md5_matches_published": true,
+      "processed": {
+        "gap_rows": 0,
+        "output": "processed/traffic/2013-11-01.parquet",
+        "output_sha256": "a947728e4d772da19ddeec813370d415c561df75c7eb4884facd46c6c6b4d428",
+        "processed_at": "2026-11-20T08:17:59+00:00",
+        "rows_in": 4842625,
+        "rows_out": 20736,
+        "rows_out_of_day_dropped": 0,
+        "rows_subset": 141130,
+        "source_sha256": "16fa6afbcc38a1fc394821bb53291ce6e861d6d8b07c9ee80bf9b7de1d539a06",
+        "subset_sha256": "f03de73f07bc074b67e97e7320a9777404dbc1498dec83f27e19be472cf052af"
+      },
+      "sha256": "16fa6afbcc38a1fc394821bb53291ce6e861d6d8b07c9ee80bf9b7de1d539a06",
+      "size_bytes": 322874887,
+      "source_doi": "10.7910/DVN/EGZHFV",
+      "verified_at": "2026-11-20T08:17:58+00:00"
+    }
+  },
+  "version": 1
+}

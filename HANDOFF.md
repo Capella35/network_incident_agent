@@ -3,21 +3,21 @@
 *Read this first at the start of every session; update it last.*
 
 ## Where things stand
-- **Milestone 1 (Data + replay) in progress, started 2026-11-19.** Plan: `docs/milestones/milestone-1.md`. Steps 1 (tooling) and 2 (domain model: entities + KPIs) done; Step 0 done (resources checked; grid + 2013-11-01 files present in `data/raw/`).
-- Feedback loop works: `make check` (ruff, mypy strict, pytest) passes — 17 tests, 93% coverage. Pre-commit runs gitleaks + ruff. CI workflow written but not yet run on GitHub.
-- **Laptop: 8 GB RAM total.** Subset cut to ~150 squares; Spark behind a Compose profile; containers memory-capped (`DECISIONS.md` 2026-11-19).
-- **Data on disk:** `data/raw/milano-grid.geojson` (MD5 matches published) and `data/raw/sms-call-internet-mi-2013-11-01.txt` (323 MB). `data/manifest.json` doesn't exist yet (Step 3 writes it). Training/validation weeks are downloaded in weekly batches when Step 3 is ready.
-- Repo is public on GitHub by decision (code and docs only). `main` has no branch protection yet.
+- **Milestone 1 (Data + replay) in progress, started 2026-11-19.** Plan: `docs/milestones/milestone-1.md`. Steps 0–3 done; subset part of Step 4 done.
+- `make data` works: verifies each file against the committed published checksums, writes `data/processed/traffic/<date>.parquet` and `data/manifest.json`. 2013-11-01 processed (20,736 rows, 0 gaps), reproducible byte-for-byte.
+- Subset: 144 squares (12 × 12 around square 5061, the Duomo). `make check` passes: 37 tests, 95% coverage. CI green on GitHub; `main` is branch-protected.
+- **Laptop: 8 GB RAM total.** Spark behind a Compose profile; containers memory-capped (`DECISIONS.md` 2026-11-19).
+- **Data on disk:** `data/raw/` holds the grid and 2013-11-01 only. Training/validation weeks (2013-11-04 → 2013-12-15) still to download, in weekly batches.
 
 ## Last session
-- 2026-11-19: audit (maturity 2: strong design docs, no build/test/CI). Milestone 1 plan written and started. Steps 1–2 built and passing. Decisions recorded (start date, public repo, 8 GB adjustments, tooling). Not yet committed.
-- 2026-11-14: repo renamed, git + gitleaks hook, first push; folder moved out of iCloud.
+- 2026-11-20: branch protection on; Step 3 (`make data`) built, tested, and run on 2013-11-01; subset fixed; docs and decisions updated.
+- 2026-11-19: audit; Milestone 1 plan; Steps 0–2 (tooling, domain model); first CI run green.
 
 ## Next step
-1. Commit Steps 0–2 and push; confirm CI goes green on GitHub.
-2. Recommended: turn on branch protection for `main` (block force-push, require CI) and GitHub secret scanning + push protection.
-3. **Step 3:** verify + process script (`make data`): MD5 check against the Dataverse value, country-code sum, gap fill, parquet out, `data/manifest.json`. Run it end-to-end on 2013-11-01.
-4. **Manual, before Step 6:** start Docker Desktop and set its memory limit to ~5 GB (Settings → Resources).
+1. **Step 4:** topology generator (cells → sites → aggregation nodes → `CORE-1`, seeded, labeled synthetic) from `data/processed/subset.json`.
+2. **Step 5:** modeled KPIs (`load_ratio`, `latency_ms`, `drop_rate`).
+3. **Manual, any time before Step 5 needs real weeks:** download training week 1 (2013-11-04 → 2013-11-10) into `data/raw/`, then `make data ARGS="--delete-raw"`.
+4. **Manual, before Step 6:** start Docker Desktop with ~5 GB memory.
 
 ## Blocked on
 - Nothing.

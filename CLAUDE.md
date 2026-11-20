@@ -20,8 +20,9 @@ Milestone 1 in progress (started 2026-11-19). Python 3.11, managed with `uv`; ex
 | Type check (mypy strict) | `make typecheck` |
 | Unit tests + coverage | `make test` |
 | Everything CI runs | `make check` — run before every commit |
+| Verify + process Milan files in `data/raw/` | `make data` (`ARGS="--date 2013-11-01 --delete-raw"`, `--force`) |
 
-Planned, not built yet: `make data`, `make replay`, `docker compose -f infra/docker-compose.yml up`. Don't claim they work until they exist.
+Planned, not built yet: `make replay`, `docker compose -f infra/docker-compose.yml up`. Don't claim they work until they exist.
 
 **Laptop limit:** 8 GB RAM total. Keep containers memory-capped; Spark runs only under its Compose profile.
 

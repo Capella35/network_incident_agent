@@ -1,0 +1,385 @@
+{
+  "_comment": "Published checksums from the Harvard Dataverse API (dataset metadata, not data). Used by producer.data_prep to verify manual downloads.",
+  "retrieved": "2026-11-20",
+  "license": "ODbL-1.0",
+  "files": {
+    "milano-grid.geojson": {
+      "doi": "10.7910/DVN/QJWLFU",
+      "dataverse_file_id": 2670806,
+      "md5": "e64ed3858e97347c14cd049efde8c7d3",
+      "size_bytes": 3168596
+    },
+    "sms-call-internet-mi-2013-11-01.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674255,
+      "md5": "658c49f8e3c7910bd3bb2bafbf62cdce",
+      "size_bytes": 322874887
+    },
+    "sms-call-internet-mi-2013-11-02.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674265,
+      "md5": "d90f3512c4f278f78d875fb49fcb7191",
+      "size_bytes": 315164060
+    },
+    "sms-call-internet-mi-2013-11-03.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674273,
+      "md5": "71bde0827182bb45ce6f4c708fe6b42e",
+      "size_bytes": 313058344
+    },
+    "sms-call-internet-mi-2013-11-04.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674282,
+      "md5": "151f85ab92fc0fea449ff19cb7e50a0a",
+      "size_bytes": 361097689
+    },
+    "sms-call-internet-mi-2013-11-05.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674279,
+      "md5": "f8f22dfdce95bf66d6fa9f699afbdf5e",
+      "size_bytes": 372894401
+    },
+    "sms-call-internet-mi-2013-11-06.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674283,
+      "md5": "1c4e7de6a559357560927796b5c63c06",
+      "size_bytes": 374625924
+    },
+    "sms-call-internet-mi-2013-11-07.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674271,
+      "md5": "dc0fac4c7fccb4c3328a77f450230c5c",
+      "size_bytes": 373036285
+    },
+    "sms-call-internet-mi-2013-11-08.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674261,
+      "md5": "e2c02fde5673256145b29eb73321ca12",
+      "size_bytes": 376123111
+    },
+    "sms-call-internet-mi-2013-11-09.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674268,
+      "md5": "ceee41ef748750475d57f16770b0abe0",
+      "size_bytes": 332440742
+    },
+    "sms-call-internet-mi-2013-11-10.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674259,
+      "md5": "4b7a506876b06565272af93048aa54b8",
+      "size_bytes": 314441422
+    },
+    "sms-call-internet-mi-2013-11-11.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674272,
+      "md5": "748eee94e1924f95d323f3df1dd6f009",
+      "size_bytes": 351945243
+    },
+    "sms-call-internet-mi-2013-11-12.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674284,
+      "md5": "e70f999b213bfe38b36c956cf0d1daf4",
+      "size_bytes": 358347374
+    },
+    "sms-call-internet-mi-2013-11-13.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674257,
+      "md5": "f9d8e9e15d3b0ed82792dd9fb77f1ec2",
+      "size_bytes": 362539357
+    },
+    "sms-call-internet-mi-2013-11-14.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674267,
+      "md5": "7b8e81a994c7c3f0d17338e42be76944",
+      "size_bytes": 363552765
+    },
+    "sms-call-internet-mi-2013-11-15.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674281,
+      "md5": "51a465a1b72ec28cfa34cd27ecd40cb2",
+      "size_bytes": 364814415
+    },
+    "sms-call-internet-mi-2013-11-16.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674256,
+      "md5": "f319979979e14164667d7606a3d11c57",
+      "size_bytes": 321048116
+    },
+    "sms-call-internet-mi-2013-11-17.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674266,
+      "md5": "c66a2d9873ef54812a4a17444cba7451",
+      "size_bytes": 307197776
+    },
+    "sms-call-internet-mi-2013-11-18.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674260,
+      "md5": "3455490d465be13d6a107e5982672008",
+      "size_bytes": 348325345
+    },
+    "sms-call-internet-mi-2013-11-19.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674280,
+      "md5": "f9d64c99a62e560e754dbe40c0510786",
+      "size_bytes": 356545029
+    },
+    "sms-call-internet-mi-2013-11-20.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674263,
+      "md5": "ea4904a581e9a829cebf2fdbaf679f25",
+      "size_bytes": 360144384
+    },
+    "sms-call-internet-mi-2013-11-21.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674276,
+      "md5": "d2943e3d4f31a5d8f7575796d3b47368",
+      "size_bytes": 358700264
+    },
+    "sms-call-internet-mi-2013-11-22.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674269,
+      "md5": "07a02618f46af85618247104bc46e974",
+      "size_bytes": 360316105
+    },
+    "sms-call-internet-mi-2013-11-23.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674277,
+      "md5": "c0f44412f4d49cd7fa0edfff31ecd887",
+      "size_bytes": 317406788
+    },
+    "sms-call-internet-mi-2013-11-24.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674258,
+      "md5": "8bffcfdffdfa73a18c9bcc64bf1de2b5",
+      "size_bytes": 303987293
+    },
+    "sms-call-internet-mi-2013-11-25.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674262,
+      "md5": "9865c11cbfc3c907f8bce2eaa10f448c",
+      "size_bytes": 345276784
+    },
+    "sms-call-internet-mi-2013-11-26.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674270,
+      "md5": "9a878cf4c279094446e5fb8f009f99bc",
+      "size_bytes": 352033486
+    },
+    "sms-call-internet-mi-2013-11-27.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674274,
+      "md5": "a7d1abf21b6b11aa1725588d16d95c1f",
+      "size_bytes": 349777785
+    },
+    "sms-call-internet-mi-2013-11-28.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674278,
+      "md5": "b47f3fa389889b9c804039c75968d85d",
+      "size_bytes": 350899256
+    },
+    "sms-call-internet-mi-2013-11-29.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674264,
+      "md5": "4ee896fb8afb2fb1d7569119533d75c0",
+      "size_bytes": 351607243
+    },
+    "sms-call-internet-mi-2013-11-30.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674275,
+      "md5": "54ae3a2aeb373d3cbd031ba32dc8e778",
+      "size_bytes": 311422116
+    },
+    "sms-call-internet-mi-2013-12-01.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674292,
+      "md5": "785eed3199d70341ad3eb427ab157297",
+      "size_bytes": 298715145
+    },
+    "sms-call-internet-mi-2013-12-02.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674287,
+      "md5": "6ad0d9bc559c22efbfe1bfe33619b393",
+      "size_bytes": 341919663
+    },
+    "sms-call-internet-mi-2013-12-03.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674294,
+      "md5": "a253615038abf0e191a1d3bb03d26aa2",
+      "size_bytes": 353947238
+    },
+    "sms-call-internet-mi-2013-12-04.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674307,
+      "md5": "e4abdf54f50618a0d8fcf2db1cf18817",
+      "size_bytes": 352032545
+    },
+    "sms-call-internet-mi-2013-12-05.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674291,
+      "md5": "42004492d87a1b76a91ad2e6b2e89f52",
+      "size_bytes": 353519447
+    },
+    "sms-call-internet-mi-2013-12-06.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674295,
+      "md5": "6a236e67403ced6fa303f603dd0b80e6",
+      "size_bytes": 354028475
+    },
+    "sms-call-internet-mi-2013-12-07.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674301,
+      "md5": "07e1b99c3cea4adf0ce07028ebbff601",
+      "size_bytes": 307172220
+    },
+    "sms-call-internet-mi-2013-12-08.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674311,
+      "md5": "aa44fac0820e01a5c0268df7f4547cb0",
+      "size_bytes": 293663723
+    },
+    "sms-call-internet-mi-2013-12-09.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674313,
+      "md5": "dc35aa2f908f60e6fc45663379b57dc8",
+      "size_bytes": 338963272
+    },
+    "sms-call-internet-mi-2013-12-10.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674309,
+      "md5": "89f524e4039f111c2b0eec8667b9c33b",
+      "size_bytes": 349269739
+    },
+    "sms-call-internet-mi-2013-12-11.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674314,
+      "md5": "cd7581d7d586c4741866976c5946481b",
+      "size_bytes": 351378560
+    },
+    "sms-call-internet-mi-2013-12-12.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674310,
+      "md5": "79adf11aa1acb2863a44cfbc601a6ba6",
+      "size_bytes": 353930588
+    },
+    "sms-call-internet-mi-2013-12-13.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674315,
+      "md5": "07d9d9b536ad330841c60659e39f09c0",
+      "size_bytes": 351454734
+    },
+    "sms-call-internet-mi-2013-12-14.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674293,
+      "md5": "ad7ab3089c14b110786d86f8a9be4c91",
+      "size_bytes": 310080286
+    },
+    "sms-call-internet-mi-2013-12-15.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674306,
+      "md5": "c227bcd0c387de3d88c3b52fff1512ca",
+      "size_bytes": 296653479
+    },
+    "sms-call-internet-mi-2013-12-16.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674289,
+      "md5": "ccd799e2f437f7229fbea070f22c7ea3",
+      "size_bytes": 342672644
+    },
+    "sms-call-internet-mi-2013-12-17.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674316,
+      "md5": "0c4d4cafc22cb209e2acb88782438482",
+      "size_bytes": 351108029
+    },
+    "sms-call-internet-mi-2013-12-18.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674312,
+      "md5": "cf67bd1a84432cc6b4800488d2c5d166",
+      "size_bytes": 350956602
+    },
+    "sms-call-internet-mi-2013-12-19.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674286,
+      "md5": "4dc65086f76e8ec6eb08f9dee4f60586",
+      "size_bytes": 356429243
+    },
+    "sms-call-internet-mi-2013-12-20.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674288,
+      "md5": "4b8b24622a83d0a0944155a429411cab",
+      "size_bytes": 349357045
+    },
+    "sms-call-internet-mi-2013-12-21.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674303,
+      "md5": "c3acc3d3cf7f946f32b283bfb823af8a",
+      "size_bytes": 313594501
+    },
+    "sms-call-internet-mi-2013-12-22.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674308,
+      "md5": "355c8c198af7e372ba9e3d7b7f01a3b5",
+      "size_bytes": 301004169
+    },
+    "sms-call-internet-mi-2013-12-23.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674290,
+      "md5": "1dd238f0b3111d75c9bae8654617db18",
+      "size_bytes": 326617616
+    },
+    "sms-call-internet-mi-2013-12-24.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674305,
+      "md5": "6ea08442917409774e451d03ebd98332",
+      "size_bytes": 328653739
+    },
+    "sms-call-internet-mi-2013-12-25.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674304,
+      "md5": "9ad51e1d206b52a54e3d6f95c31e1170",
+      "size_bytes": 324587326
+    },
+    "sms-call-internet-mi-2013-12-26.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674298,
+      "md5": "ccca2ca9e50405eca22c508d4df6a57a",
+      "size_bytes": 281115796
+    },
+    "sms-call-internet-mi-2013-12-27.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674297,
+      "md5": "479e93d8b6c442f0dc44085c9984ad30",
+      "size_bytes": 303320719
+    },
+    "sms-call-internet-mi-2013-12-28.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674296,
+      "md5": "cd02c07e7c956b0abaee6495cf6fe830",
+      "size_bytes": 285311365
+    },
+    "sms-call-internet-mi-2013-12-29.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674317,
+      "md5": "4d0cd54e39373db049374818174d67b9",
+      "size_bytes": 277460259
+    },
+    "sms-call-internet-mi-2013-12-30.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674299,
+      "md5": "9230d450b47c0aa330fc97253f67810b",
+      "size_bytes": 300546933
+    },
+    "sms-call-internet-mi-2013-12-31.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674302,
+      "md5": "a1051476670422b415255f641adbe1e5",
+      "size_bytes": 324184533
+    },
+    "sms-call-internet-mi-2014-01-01.txt": {
+      "doi": "10.7910/DVN/EGZHFV",
+      "dataverse_file_id": 2674300,
+      "md5": "c618f36b36bb18033cd717f18b80f7ff",
+      "size_bytes": 329510085
+    }
+  }
+}

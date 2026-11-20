@@ -36,6 +36,11 @@ Seeded from the decision log and "Still open" list in `PROJECT.md` (2026-11-14).
 | 2026-11-19 | **GitHub repo stays public** (code and docs only). Reason: portfolio project. Rule 2 ("local only") applies to the running system and demo, not the source code. No data, secrets, or carrier material are ever committed (Rules 3, 8, 14), enforced by gitleaks pre-commit + CI. |
 | 2026-11-19 | **Laptop has 8 GB RAM total** (Intel i5-10500, 12 threads, 54 GB disk free; ~47% RAM free at check). Adjustments: cell subset ~150 squares (was ~300); Spark behind a Compose profile, off by default in M1; hard memory limit per container; Docker Desktop capped at ~5 GB. Quality bars unchanged. Reason: the design assumed ~8 GB *free*. |
 | 2026-11-19 | Tooling: `uv` with `uv.lock` as the exact dependency pin (guardrail S5); ruff (lint + format), mypy strict, pytest + coverage; pre-commit (gitleaks, ruff, large-file and private-key checks) replaces the unversioned hook; GitHub Actions CI (gitleaks + `make check`); `.claude/settings.json` denies Claude Code reads/edits of `.env` and edits under `data/`. Reason: a feedback loop and enforced guardrails before any application code. |
+| 2026-11-20 | **Cell subset fixed:** 12 × 12 block (144 squares) centred on square 5061, nearest the Duomo. Reason: compact and contiguous, so synthetic sites and aggregation nodes are geographically sensible; ~150 fits the 8 GB laptop. |
+| 2026-11-20 | Published Dataverse checksums (file ID, size, MD5 for all 63 files) committed in `src/producer/milan_files.json`. Reason: `make data` refuses any file not on the list or not matching it; metadata, not data, so committing it is allowed. |
+| 2026-11-20 | Data processing uses Polars (streaming scan; ~400 MB peak for a 323 MB day file). Processed days are stored as `data/processed/traffic/<date>.parquet` (zstd, UTC ms timestamps), byte-for-byte reproducible. Reason: fits the 8 GB laptop. |
+| 2026-11-20 | A source row with all activity fields empty counts as recorded zero activity, not a data gap; only a missing (square, interval) row is a gap. Reason: the empty fields are documented as "no recorded activity". |
+| 2026-11-20 | Branch protection on `main`: CI checks required, no force-push or deletion, linear history; admins may bypass (solo project). |
 
 ## Open
 
@@ -43,4 +48,3 @@ Seeded from the decision log and "Still open" list in `PROJECT.md` (2026-11-14).
 |---|---|
 | Groq model | Chosen at Milestone 5, by tool-calling reliability on the agent eval set |
 | Data versioning | DVC vs. plain versioned snapshots (plain snapshots recommended) |
-| Branch protection on `main` | Recommended now the repo is public: block force-push/deletion, require CI to pass |
