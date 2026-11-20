@@ -20,6 +20,24 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-20 — Milestone 1, step 5 (calibration): training week 1
+
+**What was built:**
+- Downloaded (manual): 2013-11-02 → 2013-11-10. `make data`: all 9 files passed size + MD5 against the published values; 4.7–5.9 M rows each → 20,736 rows, 0 gaps; 19 s total, ~630 MB peak RAM. Raw files kept for now.
+- `make calibrate` on the 7 training days (2013-11-04 → 2013-11-10).
+
+**Tests run and results (modeled values, all 7 training days, 145,152 rows):**
+- Capacity per cell (scaled units): min 177, median 1,533, max 6,045.
+- `load_ratio`: p1 0.05, p50 0.33, **p99 0.80** (as designed), max 1.87; 0.22% of rows > 0.9.
+- `latency_ms`: p1 20.2, p50 29.9, p99 102, max 1,122.
+- `drop_rate`: p50 0.0020, p99 0.0035, max 0.252.
+- Daily pattern follows real traffic: median load 0.13 at 03h, 0.57 at 12h (Europe/Rome).
+
+**Open items:**
+- **For Milestone 2:** about 0.22% of real rows already exceed load_ratio 0.9 (busy peaks). The `congestion` signature (load > 0.9 with latency/drop up) will fire on these, so they count against the false-alarm budget unless the detector or signature accounts for them.
+- `drop_rate` can exceed the configured `max` (0.2) by the noise factor (seen: 0.252). Still a valid ratio; note if a strict cap is wanted.
+- 2013-11-02 / 11-03 are in no split (before training); processed but never used for fitting.
+
 ## 2026-11-20 — Milestone 1, step 5 (code): modeled KPIs
 
 **What was built:**

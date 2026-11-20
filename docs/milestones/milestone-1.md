@@ -56,7 +56,7 @@ Set this up before any application code so every later step has tests, lint, and
 - **Tests:** same seed → identical topology; every cell has exactly one parent chain to `CORE-1`; all IDs match the `entities.yaml` patterns; no aggregation node with < 3 sites.
 - **Done when:** topology generated and labeled **synthetic** in `topology_meta.json` (instead of a CSV header comment, which would break CSV readers) and in `docs/data-sources.md`.
 
-### Step 5 — Derived KPIs (modeled) (~1 h) — *code done 2026-11-20; calibration waits for training week 1*
+### Step 5 — Derived KPIs (modeled) (~1 h) — *done 2026-11-20*
 The telemetry schema (`schemas/telemetry-message.md`) carries `latency_ms` and `drop_rate`, so a first, simple model is needed here; Milestone 2 may refine it.
 - `src/producer/kpi_model.py`: `load_ratio` = cell traffic ÷ modeled capacity (e.g., the cell's 99th-percentile training-week load × headroom); `latency_ms` and `drop_rate` rise non-linearly with `load_ratio`, plus small seeded noise. Parameters in config, seeded.
 - **Tests:** deterministic for a fixed seed; monotonic in load; values within catalog ranges.
@@ -111,4 +111,4 @@ Fault injection, detectors, `faults.yaml`, alarms, correlation, classifier, cons
 
 ## Status
 
-Started 2026-11-19. Steps 0–4 done: 2013-11-01 processed (4,842,625 rows → 20,736; reproducible); subset 144 squares; synthetic topology 1 core / 5 aggregation nodes / 48 sites / 144 cells. Step 5 code done (`make calibrate`); calibration waits for training week 1 (2013-11-04 → 2013-11-10). Next: calibrate, then Step 6.
+Started 2026-11-19. Steps 0–4 done: 2013-11-01 processed (4,842,625 rows → 20,736; reproducible); subset 144 squares; synthetic topology 1 core / 5 aggregation nodes / 48 sites / 144 cells. Step 5 done: calibrated on training week 1 (load_ratio p50 0.33 / p99 0.80). Next: Step 6 (Docker Compose).
