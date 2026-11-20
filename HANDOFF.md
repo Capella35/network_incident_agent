@@ -7,17 +7,16 @@
 - `make data` works: verifies each file against the committed published checksums, writes `data/processed/traffic/<date>.parquet` and `data/manifest.json`. 2013-11-01 processed (20,736 rows, 0 gaps), reproducible byte-for-byte.
 - Subset: 144 squares (12 × 12 around square 5061, the Duomo). Synthetic topology: 1 core, 5 aggregation nodes (7–12 sites each), 48 sites, 144 cells (`data/processed/topology_*.csv`). `make check` passes: 71 tests, 96% coverage. CI green on GitHub; `main` is branch-protected.
 - **Laptop: 8 GB RAM total.** Spark behind a Compose profile; containers memory-capped (`DECISIONS.md` 2026-11-19).
-- **Data on disk:** processed days 2013-11-01 → 2013-11-10 (training week 1 = 11-04 → 11-10). Raw files still in `data/raw/` (not deleted yet). Modeled-KPI calibration in `data/processed/kpi_calibration.json` (load_ratio p99 0.80).
+- **Data on disk:** processed days 2013-11-01 → 2013-11-10 (training week 1 = 11-04 → 11-10). Raw daily files deleted 2026-11-20 after re-verification (hashes stay in `data/manifest.json`); only `data/raw/milano-grid.geojson` remains. Modeled-KPI calibration in `data/processed/kpi_calibration.json` (load_ratio p99 0.80).
 
 ## Last session
-- 2026-11-20: branch protection on; Step 3 (`make data`) and Step 4 (synthetic topology, ID templates in the domain model) built, tested, run on real data; docs and decisions updated.
+- 2026-11-20: branch protection on; Step 3 (`make data`), Step 4 (synthetic topology, ID templates in the domain model), and Step 5 (time split in code, modeled KPIs calibrated on training week 1) built, tested, run on real data; raw daily files deleted; all pushed except this handoff commit.
 - 2026-11-19: audit; Milestone 1 plan; Steps 0–2 (tooling, domain model); first CI run green.
 
 ## Next step
 1. **Step 6:** Docker Compose stack (Kafka KRaft, Postgres, Grafana, MLflow; Spark behind a profile), memory-capped, ports on 127.0.0.1.
-2. Optional: delete processed raw files (`make data ARGS="--delete-raw"`), ~3.6 GB.
-3. Later (before M2 tuning): download the remaining training weeks 2–4 (2013-11-11 → 2013-12-01) and re-run `make data` + `make calibrate`.
-4. **Manual, before Step 6:** start Docker Desktop with ~5 GB memory.
+2. Later (before M2 tuning): download the remaining training weeks 2–4 (2013-11-11 → 2013-12-01) and re-run `make data` + `make calibrate`.
+3. **Manual, before Step 6:** start Docker Desktop with ~5 GB memory.
 
 ## Blocked on
 - Nothing.
