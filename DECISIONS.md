@@ -41,6 +41,7 @@ Seeded from the decision log and "Still open" list in `PROJECT.md` (2026-11-14).
 | 2026-11-20 | Data processing uses Polars (streaming scan; ~400 MB peak for a 323 MB day file). Processed days are stored as `data/processed/traffic/<date>.parquet` (zstd, UTC ms timestamps), byte-for-byte reproducible. Reason: fits the 8 GB laptop. |
 | 2026-11-20 | A source row with all activity fields empty counts as recorded zero activity, not a data gap; only a missing (square, interval) row is a gap. Reason: the empty fields are documented as "no recorded activity". |
 | 2026-11-20 | Branch protection on `main`: CI checks required, no force-push or deletion, linear history; admins may bypass (solo project). |
+| 2026-11-20 | **Synthetic topology:** 1 square = 1 Cell; 3 adjacent squares per Site (48 sites); 5 AggregationNodes by seeded k-means (seed 20131101; 7–12 sites each); one `CORE-1`. IDs built from new `id_template` fields in `entities.yaml` (Rule 15). Labeled synthetic in `topology_meta.json`. Reason: simple, explainable, and gives each fault type room to show (3 sectors per site for site power; 7+ sites per node for backhaul). |
 
 ## Open
 

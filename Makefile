@@ -1,4 +1,4 @@
-.PHONY: help setup lint format typecheck test check data clean
+.PHONY: help setup lint format typecheck test check data topology clean
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -23,8 +23,12 @@ test:  ## Unit tests with coverage (integration tests excluded)
 
 check: lint typecheck test  ## Everything CI runs (except the secret scan)
 
-data:  ## Verify + process the Milan files in data/raw (ARGS="--date 2013-11-01 --delete-raw")
+data:  ## Verify + process Milan files in data/raw, then build the topology (ARGS="--date ... --delete-raw")
 	uv run python -m producer.data_prep $(ARGS)
+	uv run python -m producer.topology
+
+topology:  ## Rebuild only the SYNTHETIC topology from data/processed/subset.json
+	uv run python -m producer.topology
 
 clean:  ## Remove local caches (data/ is never touched)
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov

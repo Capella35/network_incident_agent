@@ -7,6 +7,7 @@ never from string literals elsewhere (CLAUDE.md Rule 15, docs/domain-model.md).
 from __future__ import annotations
 
 import re
+import string
 from enum import StrEnum
 from functools import cache
 from importlib.resources import files
@@ -20,6 +21,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 MILAN_FIELDS = frozenset({"sms_in", "sms_out", "call_in", "call_out", "internet"})
 
 _DEFAULT_DIR = files("common.domain")
+
+# Sample values used to check that each id_template produces IDs matching its id_pattern.
+_TEMPLATE_SAMPLES = {
+    "n": 7,
+    "site": 12,
+    "sector": 3,
+    "uuid": "123e4567-e89b-12d3-a456-426614174000",
+}
 
 
 class DomainError(ValueError):
@@ -52,6 +61,7 @@ class KpiSource(StrEnum):
 class EntityType(_Frozen):
     name: str
     id_pattern: str
+    id_template: str
     parent: str | None = None
     topology_level: int | None = None
 
@@ -66,8 +76,26 @@ class EntityType(_Frozen):
             raise ValueError("id_pattern must be anchored with ^ and $")
         return v
 
+    @model_validator(mode="after")
+    def _template_fits_pattern(self) -> EntityType:
+        fields = [f for _, f, _, _ in string.Formatter().parse(self.id_template) if f]
+        unknown = set(fields) - set(_TEMPLATE_SAMPLES)
+        if unknown:
+            raise ValueError(f"{self.name}: id_template uses unknown fields {sorted(unknown)}")
+        sample = self.id_template.format(**_TEMPLATE_SAMPLES)
+        if not self.matches(sample):
+            raise ValueError(f"{self.name}: id_template gives {sample!r}, not matching id_pattern")
+        return self
+
     def matches(self, entity_id: str) -> bool:
         return re.fullmatch(self.id_pattern, entity_id) is not None
+
+    def make_id(self, **values: object) -> str:
+        """Build an ID from the template; raises if the result breaks the pattern."""
+        entity_id = self.id_template.format(**values)
+        if not self.matches(entity_id):
+            raise ValueError(f"{entity_id!r} is not a valid {self.name} ID")
+        return entity_id
 
 
 class Relation(_Frozen):
@@ -157,6 +185,14 @@ class Domain(_Frozen):
             return self.kpis[name]
         except KeyError:
             raise KeyError(f"unknown KPI {name!r}") from None
+
+    def parent_relation(self, child: str) -> Relation:
+        """The relation from `child`'s parent type to `child` (e.g. Site -> Cell)."""
+        parent = self.entity(child).parent
+        for rel in self.relations:
+            if rel.src == parent and rel.dst == child:
+                return rel
+        raise KeyError(f"no relation from {parent!r} to {child!r}")
 
     def team(self, code: str) -> Team:
         for t in self.teams:

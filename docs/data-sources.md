@@ -58,7 +58,7 @@ A processing script then handles them **one day at a time**: check MD5 against t
 - Test: 2013-12-16 → 2014-01-01, including the Christmas / New Year holidays as a realistic false-alarm test
 
 ## Synthetic / modeled parts (generated, committed as code + parameters)
-- **Topology:** grid squares → cells → sites → aggregation nodes → core, by geographic proximity (seeded).
+- **Topology (decided 2026-11-20):** one grid square = one Cell; each row of the 12 × 12 subset is cut west → east into strips of 3 squares, one Site per strip (48 sites, 3 sectors each); sites are grouped into 5 AggregationNodes by seeded k-means on location (7–12 sites each); all hang off `CORE-1`. Parameters in `src/producer/topology_config.yaml` (seed 20131101); generator `src/producer/topology.py`; outputs `data/processed/topology_nodes.csv`, `topology_edges.csv`, and `topology_meta.json` (`"synthetic": true`, config, input hashes). Real networks are not laid out like this.
 - **Derived KPIs:** latency, drop rate, etc., modeled from real load.
 - **Injected faults:** cell outage, site power failure, backhaul failure, congestion, bad config push (see `README.md`).
 - **Noisy reports:** human-style incident descriptions; test set uses unseen templates.

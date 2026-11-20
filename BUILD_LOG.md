@@ -20,6 +20,24 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-20 — Milestone 1, step 4: synthetic topology
+
+**What was built:**
+- `entities.yaml`: `id_template` per entity; loader checks each template produces IDs that match the pattern; `EntityType.make_id()` and `Domain.parent_relation()`.
+- `src/producer/topology.py` + `topology_config.yaml`: 1 square = 1 Cell, 3-square strips = Sites, seeded k-means (pure Python, deterministic tie-breaking) = AggregationNodes, one Core. Writes `topology_nodes.csv`, `topology_edges.csv`, `topology_meta.json` (`synthetic: true`, config, input and output hashes).
+- `make data` now builds the topology after processing; `make topology` rebuilds it alone.
+
+**Tests run and results:**
+- `make check`: ruff, mypy strict clean; 53 tests passed; coverage 96%.
+- Real grid: 1 Core, 5 AggregationNodes (7, 8, 9, 12, 12 sites), 48 Sites, 144 Cells, 197 edges; rebuild is byte-identical.
+- CI for the step 3 push (`e5be730`): both jobs green.
+
+**Decisions made:** (also in DECISIONS.md)
+- Topology layout and parameters; ID templates in the domain model.
+
+**Open items:**
+- Topology tables get loaded into Postgres in Step 6.
+
 ## 2026-11-20 — Milestone 1, step 3: verify + process (`make data`)
 
 **What was built:**

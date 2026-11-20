@@ -1,0 +1,9 @@
+# SYNTHETIC topology parameters (milestone 1, step 4; docs/data-sources.md).
+# Changing any value changes node IDs downstream: record the reason in DECISIONS.md.
+version: 1
+seed: 20131101
+sectors_per_site: 3                  # adjacent grid squares (west -> east) that share one site
+aggregation_nodes: 5                 # sites are clustered into this many backhaul aggregation nodes
+min_sites_per_aggregation_node: 3    # a backhaul fault must be able to span several sites
+max_sites_per_aggregation_node: 16
+kmeans_iterations: 100

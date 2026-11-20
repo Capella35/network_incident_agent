@@ -20,7 +20,8 @@ Milestone 1 in progress (started 2026-11-19). Python 3.11, managed with `uv`; ex
 | Type check (mypy strict) | `make typecheck` |
 | Unit tests + coverage | `make test` |
 | Everything CI runs | `make check` — run before every commit |
-| Verify + process Milan files in `data/raw/` | `make data` (`ARGS="--date 2013-11-01 --delete-raw"`, `--force`) |
+| Verify + process Milan files in `data/raw/`, then build the topology | `make data` (`ARGS="--date 2013-11-01 --delete-raw"`, `--force`) |
+| Rebuild only the synthetic topology | `make topology` |
 
 Planned, not built yet: `make replay`, `docker compose -f infra/docker-compose.yml up`. Don't claim they work until they exist.
 
@@ -28,7 +29,7 @@ Planned, not built yet: `make replay`, `docker compose -f infra/docker-compose.y
 
 ## Code conventions
 - `src/` layout, one package per component (`common`, `producer`, …); add each new package to `[tool.hatch.build.targets.wheel]` and `[tool.mypy] packages` in `pyproject.toml`.
-- Entity, KPI, team, fault, and state names come from `common.domain.load_domain()`; never string literals elsewhere.
+- Entity, KPI, team, fault, and state names come from `common.domain.load_domain()`; never string literals elsewhere. Build entity IDs with `domain.entity(<type>).make_id(...)`, never by string formatting.
 - Every new behavior ships with a test in `tests/<package>/`. Tests that need Docker are marked `@pytest.mark.integration`.
 - Tests use small hand-written fixtures, never Milan data files.
 

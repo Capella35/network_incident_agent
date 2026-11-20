@@ -49,12 +49,12 @@ Set this up before any application code so every later step has tests, lint, and
 - **Tests:** small hand-written fixture files (not Milan data): country-code summing, empty → 0, gap filling, UTC handling, MD5 mismatch rejected, manifest entry written.
 - **Done when:** 2013-11-01 processes with 144 intervals per subset square; manifest has its entry; re-running gives the same SHA-256 for the output file.
 
-### Step 4 — Cell subset + topology generator (~1.5 h) — *subset done 2026-11-20 (in `make data`); topology next*
+### Step 4 — Cell subset + topology generator (~1.5 h) — *done 2026-11-20*
 - **Subset:** a compact, contiguous block of grid squares in central Milan (so sites and aggregation nodes are geographically sensible). Size from Step 0: **~150 squares** (8 GB laptop; R5). Selection rule + list written to `data/processed/subset.json` and documented here.
 - **Topology (synthetic, seeded):** 1 square = 1 Cell; cells → Sites by proximity (~3 sectors per site); sites → AggregationNodes by k-means on location (~8–12 sites per node, enough for backhaul faults to span several sites); all AGG nodes → `CORE-1`. Seed and parameters committed in `src/producer/topology_config.yaml`.
 - Output: `data/processed/topology_nodes.csv`, `topology_edges.csv`, loaded into Postgres in Step 6.
 - **Tests:** same seed → identical topology; every cell has exactly one parent chain to `CORE-1`; all IDs match the `entities.yaml` patterns; no aggregation node with < 3 sites.
-- **Done when:** topology generated and labeled **synthetic** in its file header and in `docs/data-sources.md`.
+- **Done when:** topology generated and labeled **synthetic** in `topology_meta.json` (instead of a CSV header comment, which would break CSV readers) and in `docs/data-sources.md`.
 
 ### Step 5 — Derived KPIs (modeled) (~1 h)
 The telemetry schema (`schemas/telemetry-message.md`) carries `latency_ms` and `drop_rate`, so a first, simple model is needed here; Milestone 2 may refine it.
@@ -111,4 +111,4 @@ Fault injection, detectors, `faults.yaml`, alarms, correlation, classifier, cons
 
 ## Status
 
-Started 2026-11-19. Steps 0–3 done (2013-11-01 processed: 4,842,625 rows → 20,736; reproducible). Subset fixed (144 squares). Next: Step 4 topology generator.
+Started 2026-11-19. Steps 0–4 done: 2013-11-01 processed (4,842,625 rows → 20,736; reproducible); subset 144 squares; synthetic topology 1 core / 5 aggregation nodes / 48 sites / 144 cells. Next: Step 5 modeled KPIs.

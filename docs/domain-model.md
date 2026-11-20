@@ -19,7 +19,7 @@ src/common/domain/
   loader.py        # loads + validates the YAML; one typed object used everywhere
 ```
 
-Postgres: `topology_nodes(node_id, node_type, parent_id, lat, lon)` and `topology_edges(src, dst, relation)`, queried with recursive SQL or networkx.
+Postgres: `topology_nodes(node_id, node_type, parent_id, lat, lon, square_id)` (`square_id` set only for Cells) and `topology_edges(src, dst, relation)`, queried with recursive SQL or networkx. Each entity in `entities.yaml` has an `id_pattern` and an `id_template`; code builds IDs only through `make_id()`, which checks the result against the pattern.
 
 ## 2. Entities and relations
 

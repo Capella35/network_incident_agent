@@ -47,6 +47,25 @@ def test_id_patterns(entity: str, good: str, bad: str) -> None:
     assert not ent.matches(bad)
 
 
+def test_make_id() -> None:
+    d = load_domain()
+    assert d.entity("Cell").make_id(site=4, sector=2) == "CELL-4-2"
+    assert d.entity("AggregationNode").make_id(n=3) == "AGG-3"
+    with pytest.raises(ValueError, match="not a valid"):
+        d.entity("Site").make_id(n="x")
+
+
+def test_parent_relation() -> None:
+    rel = load_domain().parent_relation("Cell")
+    assert (rel.name, rel.src, rel.dst) == ("parent_of", "Site", "Cell")
+
+
+def test_rejects_template_not_matching_pattern(domain_copy: Path) -> None:
+    _replace(domain_copy / "entities.yaml", "id_template: 'SITE-{n}'", "id_template: 'ST-{n}'")
+    with pytest.raises(DomainError, match="id_template"):
+        load_domain_from(domain_copy)
+
+
 def test_real_kpis_map_to_milan_fields() -> None:
     d = load_domain()
     assert d.kpi("traffic_voice").milan_fields == ("call_in", "call_out")
