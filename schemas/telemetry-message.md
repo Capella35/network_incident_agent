@@ -16,7 +16,8 @@ Derived from `README.md` / `PROJECT.md`. Milan-derived fields verified 2026-11-1
 | `call_out` | float | Outgoing call activity (scaled), as above |
 | `internet` | float | Internet activity (scaled), as above |
 | `data_gap` | bool | True if the source had no row for this square and interval (values set to 0) |
-| `latency_ms` | float | Derived KPI, modeled from load (synthetic) |
-| `drop_rate` | float | Derived KPI, modeled from load (synthetic) |
+| `load_ratio` | float, nullable | Modeled: load ÷ the cell's modeled capacity (training-week q99 × 1.25). Null when `data_gap` |
+| `latency_ms` | float, nullable | Modeled from load (queueing curve, seeded noise). Null when `data_gap` |
+| `drop_rate` | float, nullable | Modeled from load (logistic rise near saturation, seeded noise). Null when `data_gap` |
 | `schema_version` | int | TODO (inferred): schema version for evolution |
 | `replay_run_id` | string | TODO (inferred): which replay run produced this message |

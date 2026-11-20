@@ -1,4 +1,4 @@
-.PHONY: help setup lint format typecheck test check data topology clean
+.PHONY: help setup lint format typecheck test check data topology calibrate clean
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
@@ -29,6 +29,9 @@ data:  ## Verify + process Milan files in data/raw, then build the topology (ARG
 
 topology:  ## Rebuild only the SYNTHETIC topology from data/processed/subset.json
 	uv run python -m producer.topology
+
+calibrate:  ## Fit MODELED cell capacity on processed training days -> kpi_calibration.json
+	uv run python -m producer.kpi_model
 
 clean:  ## Remove local caches (data/ is never touched)
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov

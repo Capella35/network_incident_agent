@@ -22,6 +22,7 @@ Milestone 1 in progress (started 2026-11-19). Python 3.11, managed with `uv`; ex
 | Everything CI runs | `make check` — run before every commit |
 | Verify + process Milan files in `data/raw/`, then build the topology | `make data` (`ARGS="--date 2013-11-01 --delete-raw"`, `--force`) |
 | Rebuild only the synthetic topology | `make topology` |
+| Fit modeled cell capacity on training days | `make calibrate` |
 
 Planned, not built yet: `make replay`, `docker compose -f infra/docker-compose.yml up`. Don't claim they work until they exist.
 
@@ -32,6 +33,7 @@ Planned, not built yet: `make replay`, `docker compose -f infra/docker-compose.y
 - Entity, KPI, team, fault, and state names come from `common.domain.load_domain()`; never string literals elsewhere. Build entity IDs with `domain.entity(<type>).make_id(...)`, never by string formatting.
 - Every new behavior ships with a test in `tests/<package>/`. Tests that need Docker are marked `@pytest.mark.integration`.
 - Tests use small hand-written fixtures, never Milan data files.
+- Anything that fits or tunes on data must go through `common.splits` (`splits.require(day, Split.TRAIN)` or `VALIDATION`); never read test days outside the final evaluation.
 
 ## Common mistakes to avoid
 - Using ground-truth fault labels outside `src/evaluation/` (Rule 6), or reading test-week data while tuning (Rule 7).

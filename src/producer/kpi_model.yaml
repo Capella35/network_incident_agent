@@ -1,0 +1,20 @@
+# MODELED KPI parameters (milestone 1, step 5). Latency and drop rate are not in the Milan data;
+# they are computed from real load with these curves and labelled "modeled" everywhere (Rule 9).
+# Changing a value changes every replayed message: record the reason in DECISIONS.md.
+version: 1
+seed: 20131101
+load_kpi: traffic_internet        # internet activity dominates volume; used as cell load
+capacity:
+  quantile: 0.99                  # of each cell's training-week load (data gaps excluded)
+  headroom: 1.25                  # capacity = quantile * headroom, so normal peaks sit near 0.8
+  min_fraction_of_median: 0.1     # floor for near-silent cells, avoids division by ~0
+latency_ms:
+  base: 20.0                      # unloaded user-plane latency
+  max_utilisation: 0.98           # queueing curve base / (1 - rho) is capped here (~1 s)
+  noise_sigma: 0.05               # multiplicative log-normal noise
+drop_rate:
+  base: 0.002                     # background share of dropped connections
+  max: 0.2                        # saturation level
+  midpoint: 0.95                  # load ratio where drops reach half-way to max
+  width: 0.03                     # steepness of the logistic rise
+  noise_sigma: 0.1

@@ -20,6 +20,23 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-20 — Milestone 1, step 5 (code): modeled KPIs
+
+**What was built:**
+- `src/common/splits.yaml` + `splits.py`: the train/validation/test days in one place; `require()` guard.
+- `src/producer/kpi_model.py` + `kpi_model.yaml`: real KPIs from the `kpis.yaml` Milan-field mapping; per-cell capacity calibrated on training days only; `load_ratio`, `latency_ms`, `drop_rate` with seeded per-(cell, interval) noise; null modeled values on gap rows. CLI writes `data/processed/kpi_calibration.json` (`modeled: true`, params, train days, input hashes). `make calibrate`.
+- `topology.load_cells()`; telemetry schema updated (`load_ratio` added; modeled KPIs nullable on gaps).
+
+**Tests run and results:**
+- `make check`: ruff, mypy strict clean; 71 tests passed; coverage 96%.
+- `make calibrate` on the real repo refuses to run: only 2013-11-01 is processed, and it isn't a training day (guard works).
+
+**Decisions made:** (also in DECISIONS.md)
+- Splits in code; KPI model curves and parameters.
+
+**Open items:**
+- Calibrate once training week 1 is downloaded and processed; check the real distributions (expect `load_ratio` p99 ≈ 0.8).
+
 ## 2026-11-20 — Milestone 1, step 4: synthetic topology
 
 **What was built:**

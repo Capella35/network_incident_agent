@@ -218,6 +218,17 @@ def write(topo: Topology, out_dir: Path, meta: dict[str, Any]) -> dict[str, str]
     return shas
 
 
+def load_cells(nodes_csv: Path) -> dict[int, str]:
+    """Map Milan square_id -> Cell node_id from a written `topology_nodes.csv`."""
+    cell_type = load_domain().topology_types()[-1].name
+    with nodes_csv.open(newline="", encoding="utf-8") as fh:
+        return {
+            int(r["square_id"]): r["node_id"]
+            for r in csv.DictReader(fh)
+            if r["node_type"] == cell_type
+        }
+
+
 def run(data_dir: Path, config_path: Path | None = None) -> Topology:
     grid_path = data_dir / "raw" / "milano-grid.geojson"
     subset_path = data_dir / "processed" / "subset.json"

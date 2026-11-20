@@ -42,6 +42,8 @@ Seeded from the decision log and "Still open" list in `PROJECT.md` (2026-11-14).
 | 2026-11-20 | A source row with all activity fields empty counts as recorded zero activity, not a data gap; only a missing (square, interval) row is a gap. Reason: the empty fields are documented as "no recorded activity". |
 | 2026-11-20 | Branch protection on `main`: CI checks required, no force-push or deletion, linear history; admins may bypass (solo project). |
 | 2026-11-20 | **Synthetic topology:** 1 square = 1 Cell; 3 adjacent squares per Site (48 sites); 5 AggregationNodes by seeded k-means (seed 20131101; 7–12 sites each); one `CORE-1`. IDs built from new `id_template` fields in `entities.yaml` (Rule 15). Labeled synthetic in `topology_meta.json`. Reason: simple, explainable, and gives each fault type room to show (3 sectors per site for site power; 7+ sites per node for backhaul). |
+| 2026-11-20 | **Time split defined in code:** `src/common/splits.yaml` + `common.splits` (train 2013-11-04→12-01, validation 12-02→12-15, test 12-16→2014-01-01). Calibration calls `splits.require(day, TRAIN)` and never reads validation/test files. Reason: Rule 7 enforced in code, not by convention. |
+| 2026-11-20 | **Modeled KPI model** (`src/producer/kpi_model.yaml`): load = `traffic_internet`; capacity = per-cell training-week q99 × 1.25 (floor 10% of the median); `latency_ms` = 20 / (1 − min(ρ, 0.98)) × log-normal noise (σ 0.05); `drop_rate` = 0.002 + 0.198 × logistic((ρ − 0.95) / 0.03) × noise (σ 0.1). Noise is a hash of (seed, cell square, interval), so it's independent of batch and order. Gap rows get null modeled KPIs. Reason: simple, monotonic, explainable curves that put normal peaks near ρ ≈ 0.8, leaving room for injected congestion (ρ > 0.9) in M2. |
 
 ## Open
 
