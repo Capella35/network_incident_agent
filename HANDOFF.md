@@ -3,19 +3,21 @@
 *Read this first at the start of every session; update it last.*
 
 ## Where things stand
-- **Design stage.** No code yet. Charter (`PROJECT.md`) and technical design (`README.md`) are written. The project was re-scoped to telecom network operations on 2026-11-14, and the tech stack was chosen the same day.
-- **Milestone 1 (Data + replay) is defined but not started.** Its detailed step-by-step plan is not written yet; per `PROJECT.md`, it is written just before the milestone starts.
-- Project management structure (this file, `DECISIONS.md`, `BUILD_LOG.md`, `docs/`, `schemas/`, `evals/`) set up on 2026-11-14.
+- **Milestone 1 (Data + replay) in progress, started 2026-11-19.** Plan: `docs/milestones/milestone-1.md`. Steps 1 (tooling) and 2 (domain model: entities + KPIs) done; Step 0 done (resources checked; grid + 2013-11-01 files present in `data/raw/`).
+- Feedback loop works: `make check` (ruff, mypy strict, pytest) passes — 17 tests, 93% coverage. Pre-commit runs gitleaks + ruff. CI workflow written but not yet run on GitHub.
+- **Laptop: 8 GB RAM total.** Subset cut to ~150 squares; Spark behind a Compose profile; containers memory-capped (`DECISIONS.md` 2026-11-19).
+- **Data on disk:** `data/raw/milano-grid.geojson` (MD5 matches published) and `data/raw/sms-call-internet-mi-2013-11-01.txt` (323 MB). `data/manifest.json` doesn't exist yet (Step 3 writes it). Training/validation weeks are downloaded in weekly batches when Step 3 is ready.
+- Repo is public on GitHub by decision (code and docs only). `main` has no branch protection yet.
 
 ## Last session
-- 2026-11-14: project re-scoped, stack chosen, charter and README rewritten, project structure created.
+- 2026-11-19: audit (maturity 2: strong design docs, no build/test/CI). Milestone 1 plan written and started. Steps 1–2 built and passing. Decisions recorded (start date, public repo, 8 GB adjustments, tooling). Not yet committed.
+- 2026-11-14: repo renamed, git + gitleaks hook, first push; folder moved out of iCloud.
 
 ## Next step
-- Dataset check done 2026-11-14 (see `docs/data-sources.md`): ODbL 1.0, 62 files, ~20.8 GB; downloads are manual (guestbook needs an email). Grid + 2013-11-01 file downloaded to `data/raw/`, MD5s match, format verified.
-- Next: laptop resource check, repo rename + git init + gitleaks hook, then the Milestone 1 plan.
-- Set the Milestone 1 start date.
-- Write the Milestone 1 step-by-step plan in `docs/milestones/milestone-1.md`.
-- First task in Milestone 1: confirm the Milan dataset's license and file format, and check available laptop RAM.
+1. Commit Steps 0–2 and push; confirm CI goes green on GitHub.
+2. Recommended: turn on branch protection for `main` (block force-push, require CI) and GitHub secret scanning + push protection.
+3. **Step 3:** verify + process script (`make data`): MD5 check against the Dataverse value, country-code sum, gap fill, parquet out, `data/manifest.json`. Run it end-to-end on 2013-11-01.
+4. **Manual, before Step 6:** start Docker Desktop and set its memory limit to ~5 GB (Settings → Resources).
 
 ## Blocked on
-- Milestone 1 start date (not set).
+- Nothing.

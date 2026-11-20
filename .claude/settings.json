@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(/.env)",
+      "Edit(/.env)",
+      "Read(/.env.local)",
+      "Edit(/.env.local)",
+      "Edit(/data/raw/**)",
+      "Edit(/data/processed/**)",
+      "Edit(/data/manifest.json)",
+      "Edit(/.git/**)",
+      "Edit(/uv.lock)"
+    ]
+  }
+}

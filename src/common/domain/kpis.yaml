@@ -1,0 +1,53 @@
+# KPI catalog. Single source of truth for KPI names and units (Rule 15; docs/domain-model.md §3).
+# source: real = Milan data; modeled = synthetic, computed from real load; derived = computed from other KPIs.
+# Milan values are scaled (no physical unit): compare each cell to its own baseline, never in absolute terms.
+version: 1
+
+kpis:
+  - name: traffic_internet
+    unit: scaled_activity
+    description: Internet activity
+    bad_direction: drop
+    source: real
+    milan_fields: [internet]
+
+  - name: traffic_voice
+    unit: scaled_activity
+    description: Call activity, incoming + outgoing
+    bad_direction: drop
+    source: real
+    milan_fields: [call_in, call_out]
+
+  - name: traffic_sms
+    unit: scaled_activity
+    description: SMS activity, incoming + outgoing
+    bad_direction: drop
+    source: real
+    milan_fields: [sms_in, sms_out]
+
+  - name: load_ratio
+    unit: ratio
+    description: Cell traffic divided by modeled cell capacity
+    bad_direction: high
+    source: modeled
+    range: [0.0, null]   # can exceed 1 under overload
+
+  - name: latency_ms
+    unit: ms
+    description: Modeled user-plane latency
+    bad_direction: high
+    source: modeled
+    range: [0.0, null]
+
+  - name: drop_rate
+    unit: ratio
+    description: Modeled share of dropped connections
+    bad_direction: high
+    source: modeled
+    range: [0.0, 1.0]
+
+  - name: baseline_deviation
+    unit: z_score
+    description: Deviation from the same hour of day and weekday (Europe/Rome)
+    bad_direction: either
+    source: derived

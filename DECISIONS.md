@@ -32,12 +32,15 @@ Seeded from the decision log and "Still open" list in `PROJECT.md` (2026-11-14).
 | 2026-11-14 | Milan files are downloaded manually in the browser; verification and processing are scripted. Reason: Dataverse requires a guestbook response with an email per download; keeping it manual means no script sends personal details. Definition of done updated to allow this one manual step. |
 | 2026-11-14 | Milan processing rules: sum over country codes per square and interval; empty field = 0; missing row = 0 flagged as a data gap; timestamps stored in UTC, Europe/Rome used for seasonality. Reason: verified file format (tab-separated, no header, 10-min epoch-ms UTC intervals, 10,000 squares of ~235 m). |
 | 2026-11-14 | Repo folder renamed to `network_incident_agent`; git initialized on `main` with a gitleaks pre-commit hook (guardrail S3). |
+| 2026-11-19 | **Milestone 1 started.** Plan in `docs/milestones/milestone-1.md`; its default choices confirmed: Python 3.11, time split as proposed in `docs/data-sources.md`, 6 partitions on `telemetry.raw`, plain Python consumer as the M1 Postgres sink (Spark from M2), simple load-driven KPI model in M1. |
+| 2026-11-19 | **GitHub repo stays public** (code and docs only). Reason: portfolio project. Rule 2 ("local only") applies to the running system and demo, not the source code. No data, secrets, or carrier material are ever committed (Rules 3, 8, 14), enforced by gitleaks pre-commit + CI. |
+| 2026-11-19 | **Laptop has 8 GB RAM total** (Intel i5-10500, 12 threads, 54 GB disk free; ~47% RAM free at check). Adjustments: cell subset ~150 squares (was ~300); Spark behind a Compose profile, off by default in M1; hard memory limit per container; Docker Desktop capped at ~5 GB. Quality bars unchanged. Reason: the design assumed ~8 GB *free*. |
+| 2026-11-19 | Tooling: `uv` with `uv.lock` as the exact dependency pin (guardrail S5); ruff (lint + format), mypy strict, pytest + coverage; pre-commit (gitleaks, ruff, large-file and private-key checks) replaces the unversioned hook; GitHub Actions CI (gitleaks + `make check`); `.claude/settings.json` denies Claude Code reads/edits of `.env` and edits under `data/`. Reason: a feedback loop and enforced guardrails before any application code. |
 
 ## Open
 
 | Item | Notes |
 |---|---|
-| Start date for Milestone 1 | Not yet set |
 | Groq model | Chosen at Milestone 5, by tool-calling reliability on the agent eval set |
 | Data versioning | DVC vs. plain versioned snapshots (plain snapshots recommended) |
-| Laptop resources | Kafka + Spark + Postgres + MLflow + Grafana need roughly 8 GB+ RAM free; confirm at Milestone 1, shrink the cell subset if needed |
+| Branch protection on `main` | Recommended now the repo is public: block force-push/deletion, require CI to pass |

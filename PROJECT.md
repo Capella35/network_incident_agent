@@ -140,10 +140,12 @@ Set on 2026-11-14 for the re-scoped project, before any build. Changing a bar la
 | 2026-11-14 | Milan files are downloaded manually in the browser; verification and processing are scripted. Reason: Dataverse requires a guestbook response with an email per download; keeping it manual means no script sends personal details. Definition of done updated to allow this one manual step. |
 | 2026-11-14 | Milan processing rules: sum over country codes per square and interval; empty field = 0; missing row = 0 flagged as a data gap; timestamps stored in UTC, Europe/Rome used for seasonality. Reason: verified file format (tab-separated, no header, 10-min epoch-ms UTC intervals, 10,000 squares of ~235 m). |
 | 2026-11-14 | Repo folder renamed to `network_incident_agent`; git initialized on `main` with a gitleaks pre-commit hook (guardrail S3). |
+| 2026-11-19 | Milestone 1 started; plan defaults confirmed (details in `DECISIONS.md`). |
+| 2026-11-19 | GitHub repo stays public (code and docs only); "local only" applies to the running system and demo. |
+| 2026-11-19 | Laptop has 8 GB RAM total: cell subset ~150 squares, Spark behind a Compose profile in M1, per-container memory limits. Quality bars unchanged. |
+| 2026-11-19 | Tooling: uv + `uv.lock` pins, ruff, mypy strict, pytest, pre-commit (gitleaks), GitHub Actions CI, Claude Code deny rules. |
 
 ## Still open
 
-- **Start date for Milestone 1:** not yet set.
 - **Groq model:** chosen at Milestone 5, by tool-calling reliability on the agent eval set.
 - **Data versioning:** DVC vs. plain versioned snapshots (plain snapshots recommended).
-- **Laptop resources:** Kafka + Spark + Postgres + MLflow + Grafana together need roughly 8 GB+ RAM free; confirm at Milestone 1, and shrink the cell subset if needed.
