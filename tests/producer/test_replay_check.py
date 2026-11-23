@@ -10,6 +10,7 @@ import pytest
 
 from producer import replay_check as rc
 from producer import sink
+from tests.fakes import FakeKafkaMessage
 
 DAY = date(2013, 11, 4)
 
@@ -25,49 +26,25 @@ def payload(run: str, key: str, internet: float = 1.0) -> bytes:
 
 
 @dataclass
-class FakeMsg:
-    _p: int
-    _o: int
-    _k: str
-    _v: bytes
-    _err: Any = None
-
-    def error(self) -> Any:
-        return self._err
-
-    def key(self) -> bytes | None:
-        return self._k.encode()
-
-    def value(self) -> bytes | None:
-        return self._v
-
-    def partition(self) -> int | None:
-        return self._p
-
-    def offset(self) -> int | None:
-        return self._o
-
-
-@dataclass
 class FakeReader:
     """A topic as {partition: [(key, value), ...]}; offsets are list positions."""
 
     log: dict[int, list[tuple[str, bytes]]]
     batch: int = 3
-    _queue: list[FakeMsg] = field(default_factory=list)
+    _queue: list[FakeKafkaMessage] = field(default_factory=list)
 
     def end_offset(self, topic: str, partition: int) -> int:
         return len(self.log[partition])
 
     def assign_from(self, topic: str, starts: Mapping[int, int]) -> None:
         self._queue = [
-            FakeMsg(p, o, k, v)
+            FakeKafkaMessage(partition_=p, offset_=o, key_=k.encode(), value_=v)
             for p, start in sorted(starts.items())
             for o, (k, v) in enumerate(self.log[p])
             if o >= start
         ]
 
-    def consume(self, num_messages: int, timeout: float) -> Sequence[FakeMsg]:
+    def consume(self, num_messages: int, timeout: float) -> Sequence[FakeKafkaMessage]:
         out, self._queue = self._queue[: self.batch], self._queue[self.batch :]
         return out
 
@@ -114,7 +91,9 @@ def test_read_range_times_out() -> None:
 
 def test_read_range_surfaces_kafka_errors() -> None:
     reader = FakeReader({0: [("k", b"{}")]})
-    reader.consume = lambda n, t: [FakeMsg(0, 0, "k", b"{}", "broker gone")]  # type: ignore[method-assign]
+    reader.consume = lambda n, t: [
+        FakeKafkaMessage(partition_=0, offset_=0, key_=b"k", value_=b"{}", error_="broker gone")
+    ]  # type: ignore[method-assign]
     with pytest.raises(rc.CheckError, match="broker gone"):
         rc.read_range(reader, "t", {0: 0}, {0: 1})
 

@@ -45,6 +45,15 @@ Planned, not built yet: anything from Milestone 2 on (`make train`, `make evalua
 - Tests use small hand-written fixtures, never Milan data files.
 - Anything that fits or tunes on data must go through `common.splits` (`splits.require(day, Split.TRAIN)` or `VALIDATION`); never read test days outside the final evaluation.
 
+## Code quality (no AI slop)
+- **Search before you write.** Reuse what exists: `common.kafka` (Kafka settings), `common.db` (Postgres roles), `common.telemetry` (message schema), `tests/factories.py` (test messages), `tests/fakes.py` (fake Kafka message, fake clock), `tests/integration/conftest.py` (throwaway topics, producer, writer connection, read-back). Never copy a block into a second file; move it to `common/` or a shared test helper instead.
+- **Smallest change that meets the step's "Done when".** No speculative options, layers, or abstractions for later milestones; add them when a step needs them.
+- **No dead code:** no commented-out code, unused parameters, `if False`, or leftover debug output.
+- **Comments say why, not what.** Docstrings state the contract (inputs, outputs, what is SYNTHETIC/MODELED); the code says the rest.
+- **Many options = keyword-only.** At most 5 positional and 7 total parameters (ruff enforces); group related settings into a small frozen dataclass (e.g. `sink.LoopSettings`).
+- **Verify library APIs against the installed version** (type stubs, `mypy`), not from memory.
+- Enforced by ruff (complexity ≤ 10, no commented-out code, refactor rules), mypy strict, and a **coverage floor of 85%** (`make test` fails below it). Review the diff before verifying it (the `milestone-step` skill runs `/simplify`, then `/code-review`, at the end of Build).
+
 ## Common mistakes to avoid
 - Using ground-truth fault labels outside `src/evaluation/` (Rule 6), or reading test-week data while tuning (Rule 7).
 - Letting the fault injector import fault signatures (Rule 15).

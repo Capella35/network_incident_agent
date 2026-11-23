@@ -37,11 +37,26 @@ target-version = "py311"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF"]
+select = ["E", "F", "W", "I", "B", "UP", "S", "SIM", "RUF", "C90", "ERA", "PLR"]
 ignore = []
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]  # assert is fine in tests
+"tests/**" = [
+    "S101",     # assert is fine in tests
+    "PLR2004",  # literal expected values (e.g. 20736 rows) are the point of a test
+    "PLR0913",  # fixtures and parametrized tests take many arguments
+]
+
+# The guard hook is user-owned (Claude cannot edit .claude/hooks/); its one literal stays.
+".claude/hooks/guard.py" = ["PLR2004"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+# Up to 7 parameters, but only 5 positional: options beyond that must be keyword-only.
+max-args = 7
+max-positional-args = 5
 
 [tool.mypy]
 python_version = "3.11"
@@ -59,3 +74,8 @@ markers = [
 
 [tool.coverage.run]
 source = ["src"]
+
+[tool.coverage.report]
+# CI fails below this. Code that only runs against the live stack (Kafka/Postgres CLIs) is
+# covered by `make test-integration`, which CI cannot run; keep the rest above the floor.
+fail_under = 85

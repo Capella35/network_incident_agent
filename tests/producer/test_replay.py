@@ -5,16 +5,18 @@ import json
 import zlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 import pytest
 
-from common import telemetry
+from common import kafka, telemetry
 from common.telemetry import TelemetryMessage
 from producer import kpi_model, replay, topology
+from tests.factories import T0, telemetry_message
+from tests.fakes import FakeClock, FakeKafkaMessage
 from tests.producer.test_kpi_model import CELLS, traffic
 
 DAY = date(2013, 11, 5)  # a training day
@@ -26,25 +28,15 @@ PARTITIONS = 6
 
 
 @dataclass
-class FakeMsg:
-    _topic: str
-    _partition: int
-
-    def topic(self) -> str:
-        return self._topic
-
-    def partition(self) -> int:
-        return self._partition
-
-
-@dataclass
 class FakeProducer:
     """Records what was produced; delivers on flush. Partition = crc32(key) % 6 (stable)."""
 
     full_once: bool = False
     undeliverable: int = 0
     sent: list[tuple[str, str, bytes]] = field(default_factory=list)
-    _pending: list[tuple[Callable[[Any, Any], None], FakeMsg]] = field(default_factory=list)
+    _pending: list[tuple[Callable[[Any, Any], None], FakeKafkaMessage]] = field(
+        default_factory=list
+    )
 
     def produce(
         self, topic: str, *, value: bytes, key: bytes, on_delivery: Callable[[Any, Any], None]
@@ -53,7 +45,9 @@ class FakeProducer:
             self.full_once = False
             raise BufferError("queue full")
         self.sent.append((topic, key.decode(), value))
-        self._pending.append((on_delivery, FakeMsg(topic, zlib.crc32(key) % PARTITIONS)))
+        self._pending.append(
+            (on_delivery, FakeKafkaMessage(topic_=topic, partition_=zlib.crc32(key) % PARTITIONS))
+        )
 
     def poll(self, timeout: float) -> int:
         return 0
@@ -63,19 +57,6 @@ class FakeProducer:
             cb(None, msg)
         self._pending.clear()
         return self.undeliverable
-
-
-class FakeClock:
-    def __init__(self) -> None:
-        self.now = 100.0
-        self.sleeps: list[float] = []
-
-    def __call__(self) -> float:
-        return self.now
-
-    def sleep(self, s: float) -> None:
-        self.sleeps.append(s)
-        self.now += s
 
 
 def fast() -> replay.Pacer:
@@ -176,7 +157,7 @@ def test_invalid_row_becomes_reject_with_reason(
 
 
 def _at(minutes: int) -> datetime:
-    return datetime(2013, 11, 5, tzinfo=UTC) + timedelta(minutes=minutes)
+    return T0 + timedelta(minutes=minutes)
 
 
 def test_pacer_speed_spaces_intervals() -> None:
@@ -270,24 +251,12 @@ def test_delivery_errors_counted() -> None:
             self._pending.clear()
             return 0
 
-    msg = TelemetryMessage(
-        replay_run_id="run-1",
-        cell_id="CELL-1-1",
-        site_id="SITE-1",
-        square_id=1,
-        interval_start=_at(0),
-        **dict.fromkeys(telemetry.TRAFFIC_FIELDS, 1.0),
-        data_gap=False,
-        load_ratio=0.1,
-        latency_ms=20.0,
-        drop_rate=0.002,
-    )
-    s = replay.send([msg], ErrProducer(), summary, fast())
+    s = replay.send([telemetry_message()], ErrProducer(), summary, fast())
     assert s.failed == 1 and s.errors == ["broker down"]
 
 
 def test_kafka_config_is_idempotent_and_ordered() -> None:
-    cfg = replay.kafka_config("127.0.0.1:9092")
+    cfg = replay.kafka_config(kafka.DEFAULT_BOOTSTRAP)
     assert cfg["enable.idempotence"] is True and cfg["acks"] == "all"
     assert int(cfg["max.in.flight.requests.per.connection"]) <= 5
 

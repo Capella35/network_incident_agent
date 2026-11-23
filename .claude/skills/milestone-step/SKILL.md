@@ -27,6 +27,12 @@ One step of `specs/milestones/milestone-N.md`, from handoff to commit. The step 
 - A new package under `src/`? Use the `new-package` skill.
 - Every new behavior gets a test in `tests/<package>/` with small hand-written fixtures (never Milan files). Docker-dependent tests are `@pytest.mark.integration`.
 - Data files are produced only by the data scripts (`make data`, `make topology`, `make calibrate`). Dependencies only via `uv add`.
+- **Review the code last, before any verification** (the "Code quality" rules in `CLAUDE.md`), so the evidence in §4 describes the final code:
+  - Run the `simplify` skill on the changed code: reuse, duplication, dead code, needless layers. Apply what it finds.
+  - Run the `code-review` skill at `medium` on the diff for correctness bugs. Fix every confirmed finding, or say in the report why one is left.
+  - Grep the new code for anything that duplicates an existing helper (`common/`, `tests/factories.py`, `tests/fakes.py`, `tests/integration/conftest.py`); move shared code instead of copying it.
+  - Note what the review found and fixed, for the step summary.
+  - If anything in §4 later forces a code change, re-run this review on that change before re-verifying.
 
 ## 4. Verify
 1. `make check` must pass. Paste the summary line (tests passed, coverage).

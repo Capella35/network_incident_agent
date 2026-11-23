@@ -20,6 +20,19 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-23 — Code-quality guardrails + cleanup (before Milestone 2)
+
+**What was built:**
+- `CLAUDE.md` "Code quality" section; ruff C90 / ERA / PLR; coverage floor 85%; `milestone-step` review step (`/simplify` + `/code-review` at the end of Build, before verification).
+- Cleanup of duplication found in the repo: `common/kafka.py` now holds every Kafka client setting (base, producer, consumer; the sink's DLQ producer no longer borrows the replay's config and `client.id`); `replay.send` split (complexity 11 → under 10) with `Summary.record_delivery`; `sink.LoopSettings` (was 9 parameters); `sink.count_rows`; `tests/factories.py` (one message builder), `tests/fakes.py` (one fake Kafka message and clock, replacing 5 near-duplicate classes), `tests/integration/conftest.py` (throwaway topics, producer, read-back, writer connection, `unique()`).
+- Dogfooded the new review step on this change: `/simplify` with 4 parallel reviewers (reuse, simplification, efficiency, altitude). Applied: unused options removed (env injection, traffic callable, `**over`, group parameter), shared fakes, single producer/consumer config, batch-size default defined once, read-back no longer waits a full second per call. Skipped: merging the two fake producers (different behavior), a Topics settings object (only needed for max-args 5), and the rule-file suggestions the user did not pick. Not applied: removing the `make_topics` teardown guard (the admin client rejects an empty delete list).
+
+**Tests run and results:**
+- `make check`: 267 passed, coverage 88.6% (floor 85%). `make test-integration`: 24 passed, **12 s** (was 19 s).
+
+**Open items:**
+- Optional rule tightening still on the table: ruff ARG/T20, coverage excluding live-stack entry points with a higher floor, trimming `CLAUDE.md`, max-args 5.
+
 ## 2026-11-22 — Milestone 2 prep: training weeks 2–4 + validation weeks
 
 **What was built:**

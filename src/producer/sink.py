@@ -20,7 +20,6 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-import os
 import signal
 import sys
 import time
@@ -32,13 +31,13 @@ import psycopg
 from psycopg import sql
 from pydantic import ValidationError
 
-from common import telemetry
+from common import kafka, telemetry
 from common.db import DbConfigError, DbSettings, Role
 from common.telemetry import TelemetryMessage
 
 log = logging.getLogger("producer.sink")
 
-DEFAULT_BOOTSTRAP = "127.0.0.1:9092"
+PROGRESS_EVERY = 20  # batches between progress log lines
 GROUP_ID = "telemetry-sink"
 TABLE = "telemetry_raw"
 PRIMARY_KEY = ("replay_run_id", "cell_id", "interval_start")
@@ -196,6 +195,7 @@ def process_batch(
     dlq: DlqProducer,
     consumer: Consumer,
     summary: Summary,
+    *,
     dlq_topic: str = telemetry.TOPIC_DLQ,
 ) -> None:
     good: list[TelemetryMessage] = []
@@ -227,29 +227,49 @@ def process_batch(
     summary.batches += 1
 
 
+@dataclass(frozen=True)
+class LoopSettings:
+    batch_size: int = 500
+    idle_exit: float | None = None  # stop after this many quiet seconds; None = run until stopped
+    poll_timeout: float = 1.0
+    dlq_topic: str = telemetry.TOPIC_DLQ
+
+
+DEFAULT_LOOP = LoopSettings()
+
+
+def count_rows(conn: psycopg.Connection[Any], replay_run_id: str) -> int:
+    """Rows stored for one replay run."""
+    row = conn.execute(
+        sql.SQL("SELECT count(*) FROM {} WHERE replay_run_id = %s").format(sql.Identifier(TABLE)),
+        (replay_run_id,),
+    ).fetchone()
+    return int(row[0]) if row else 0
+
+
 def run(
     consumer: Consumer,
     writer: Writer,
     dlq: DlqProducer,
-    batch_size: int = 500,
-    idle_exit: float | None = None,
+    settings: LoopSettings = DEFAULT_LOOP,
+    *,
     stop: Callable[[], bool] = lambda: False,
     clock: Callable[[], float] = time.monotonic,
-    poll_timeout: float = 1.0,
-    dlq_topic: str = telemetry.TOPIC_DLQ,
 ) -> Summary:
     summary = Summary()
     last_message = clock()
     try:
         while not stop():
-            batch = consumer.consume(num_messages=batch_size, timeout=poll_timeout)
+            batch = consumer.consume(
+                num_messages=settings.batch_size, timeout=settings.poll_timeout
+            )
             if not batch:
-                if idle_exit is not None and clock() - last_message >= idle_exit:
+                if settings.idle_exit is not None and clock() - last_message >= settings.idle_exit:
                     break
                 continue
             last_message = clock()
-            process_batch(batch, writer, dlq, consumer, summary, dlq_topic)
-            if summary.batches % 20 == 0:
+            process_batch(batch, writer, dlq, consumer, summary, dlq_topic=settings.dlq_topic)
+            if summary.batches % PROGRESS_EVERY == 0:
                 log.info(
                     "progress: %d written, %d dead-lettered", summary.written, summary.dead_lettered
                 )
@@ -258,21 +278,22 @@ def run(
     return summary
 
 
-def consumer_config(bootstrap: str, group_id: str = GROUP_ID) -> dict[str, str | int | bool]:
-    return {
-        "bootstrap.servers": bootstrap,
-        "broker.address.family": "v4",
-        "group.id": group_id,
-        "client.id": "telemetry-sink",
-        "enable.auto.commit": False,  # offsets are committed only after the DB commit
-        "auto.offset.reset": "earliest",
-        "isolation.level": "read_committed",
-    }
+def consumer_config(bootstrap: str, group_id: str = GROUP_ID) -> kafka.Config:
+    # No auto-commit (common.kafka): offsets are committed only after the DB commit.
+    return kafka.consumer_config(
+        bootstrap,
+        group_id,
+        **{
+            "client.id": "telemetry-sink",
+            "auto.offset.reset": "earliest",
+            "isolation.level": "read_committed",
+        },
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
-    ap.add_argument("--batch-size", type=int, default=500)
+    ap.add_argument("--batch-size", type=int, default=LoopSettings.batch_size)
     ap.add_argument("--idle-exit", type=float, default=None, help="stop after N quiet seconds")
     ap.add_argument("--group-id", default=GROUP_ID)
     args = ap.parse_args(argv)
@@ -289,8 +310,6 @@ def main(argv: list[str] | None = None) -> int:
     from confluent_kafka import Consumer as KafkaConsumer
     from confluent_kafka import Producer as KafkaProducer
 
-    from producer.replay import kafka_config
-
     stopping = False
 
     def request_stop(signum: int, _frame: object) -> None:
@@ -301,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
     signal.signal(signal.SIGTERM, request_stop)
     signal.signal(signal.SIGINT, request_stop)
 
-    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", DEFAULT_BOOTSTRAP)
+    bootstrap = kafka.bootstrap_servers()
     consumer = KafkaConsumer(consumer_config(bootstrap, args.group_id))
     consumer.subscribe([telemetry.TOPIC_RAW])
     try:
@@ -309,9 +328,8 @@ def main(argv: list[str] | None = None) -> int:
             summary = run(
                 consumer,
                 PgWriter(conn),
-                KafkaProducer(kafka_config(bootstrap)),
-                batch_size=args.batch_size,
-                idle_exit=args.idle_exit,
+                KafkaProducer(kafka.producer_config(bootstrap, client_id="telemetry-sink-dlq")),
+                LoopSettings(batch_size=args.batch_size, idle_exit=args.idle_exit),
                 stop=lambda: stopping,
             )
     except (psycopg.OperationalError, SinkError) as exc:

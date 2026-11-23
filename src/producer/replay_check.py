@@ -22,7 +22,6 @@ import argparse
 import hashlib
 import json
 import logging
-import os
 import sys
 import time
 import uuid
@@ -35,7 +34,7 @@ from typing import Any, Protocol
 import psycopg
 from psycopg import sql
 
-from common import splits, telemetry
+from common import kafka, splits, telemetry
 from common.db import DbConfigError, DbSettings, Role
 from producer import replay, sink
 
@@ -77,6 +76,7 @@ def read_range(
     topic: str,
     start: Mapping[int, int],
     end: Mapping[int, int],
+    *,
     timeout_s: float = 120.0,
     clock: Callable[[], float] = time.monotonic,
 ) -> dict[int, list[tuple[str, bytes]]]:
@@ -267,14 +267,9 @@ def _wait_for_rows(
 ) -> None:
     deadline = time.monotonic() + timeout_s
     while True:
-        counts = [
-            conn.execute(
-                "SELECT count(*) FROM telemetry_raw WHERE replay_run_id = %s", (r,)
-            ).fetchone()
-            for r in runs
-        ]
+        counts = [sink.count_rows(conn, r) for r in runs]
         conn.rollback()
-        if all(c is not None and c[0] >= expected for c in counts):
+        if all(c >= expected for c in counts):
             return
         if time.monotonic() > deadline:
             raise CheckError(f"sink did not write {expected} rows per run in {timeout_s}s")
@@ -293,12 +288,7 @@ def run_check(data_dir: Path, start: date, end: date, bootstrap: str) -> Report:
 
     producer = KafkaProducer(replay.kafka_config(bootstrap))
     raw_consumer = KafkaConsumer(
-        {
-            "bootstrap.servers": bootstrap,
-            "broker.address.family": "v4",
-            "group.id": f"replay-check-{tag}",  # assign mode: never commits
-            "enable.auto.commit": False,
-        }
+        kafka.consumer_config(bootstrap, f"replay-check-{tag}")  # assign mode: never commits
     )
     reader = _KafkaRangeReader(raw_consumer)
     try:
@@ -307,7 +297,9 @@ def run_check(data_dir: Path, start: date, end: date, bootstrap: str) -> Report:
         sent: list[int] = []
         for run in runs:
             before = end_offsets(reader, topic, partitions)
-            summary = replay.run(data_dir, start, end, producer, replay.Pacer(speed=0), run)
+            summary = replay.run(
+                data_dir, start, end, producer, replay.Pacer(speed=0), replay_run_id=run
+            )
             if summary.failed or summary.dead_lettered:
                 raise CheckError(
                     f"replay {run}: {summary.failed} failed, {summary.dead_lettered} dead-lettered"
@@ -325,7 +317,9 @@ def run_check(data_dir: Path, start: date, end: date, bootstrap: str) -> Report:
     sink_consumer = KafkaConsumer(sink.consumer_config(bootstrap))
     sink_consumer.subscribe([topic])
     with writer_settings.connect() as wconn:
-        s = sink.run(sink_consumer, sink.PgWriter(wconn), producer, idle_exit=5.0)
+        s = sink.run(
+            sink_consumer, sink.PgWriter(wconn), producer, sink.LoopSettings(idle_exit=5.0)
+        )
     log.info(
         "sink: consumed %d, written %d, dead-lettered %d", s.consumed, s.written, s.dead_lettered
     )
@@ -356,7 +350,7 @@ def main(argv: list[str] | None = None) -> int:
     except (replay.ReplayError, DbConfigError) as exc:
         log.error("%s", exc)
         return 1
-    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", replay.DEFAULT_BOOTSTRAP)
+    bootstrap = kafka.bootstrap_servers()
     try:
         report = run_check(args.data_dir, args.start, end, bootstrap)
     except (CheckError, replay.ReplayError, FileNotFoundError, psycopg.OperationalError) as exc:

@@ -18,10 +18,10 @@ possible); `--max-rate` caps messages per second. Test-week days are refused unl
 from __future__ import annotations
 
 import argparse
+import functools
 import itertools
 import json
 import logging
-import os
 import sys
 import time
 import uuid
@@ -35,13 +35,13 @@ from typing import Any, Protocol
 import polars as pl
 from pydantic import ValidationError
 
-from common import splits, telemetry
+from common import kafka, splits, telemetry
 from common.telemetry import TelemetryMessage
 from producer import kpi_model, topology
 
 log = logging.getLogger("producer.replay")
 
-DEFAULT_BOOTSTRAP = "127.0.0.1:9092"
+MAX_ERRORS_KEPT = 5  # delivery errors kept verbatim in the summary
 
 
 class ReplayError(RuntimeError):
@@ -193,18 +193,8 @@ class Producer(Protocol):
     def flush(self, timeout: float) -> int: ...
 
 
-def kafka_config(bootstrap: str) -> dict[str, str | int | bool]:
-    return {
-        "bootstrap.servers": bootstrap,
-        "broker.address.family": "v4",  # localhost can resolve to ::1; the broker is on 127.0.0.1
-        "client.id": "replay-producer",
-        "enable.idempotence": True,
-        "acks": "all",
-        "max.in.flight.requests.per.connection": 5,  # <= 5 keeps order with idempotence
-        "partitioner": "murmur2_random",  # same key -> same partition as the Java clients
-        "linger.ms": 20,
-        "compression.type": "lz4",
-    }
+def kafka_config(bootstrap: str) -> kafka.Config:
+    return kafka.producer_config(bootstrap, client_id="replay-producer")
 
 
 @dataclass
@@ -217,42 +207,51 @@ class Summary:
     per_partition: Counter[int] = field(default_factory=Counter)
     errors: list[str] = field(default_factory=list)
 
+    def record_delivery(self, err: Any, msg: Any, telemetry_topic: str) -> None:
+        """Delivery callback: count successes per telemetry partition, keep a few errors."""
+        if err is not None:
+            self.failed += 1
+            if len(self.errors) < MAX_ERRORS_KEPT:
+                self.errors.append(str(err))
+            return
+        self.delivered += 1
+        if msg.topic() == telemetry_topic:
+            self.per_partition[msg.partition()] += 1
+
+
+def _produce(
+    producer: Producer, topic: str, key: str, value: bytes, on_delivery: Callable[[Any, Any], None]
+) -> None:
+    """Produce, waiting for deliveries to drain whenever the local queue is full."""
+    while True:
+        try:
+            producer.produce(topic, value=value, key=key.encode("utf-8"), on_delivery=on_delivery)
+            break
+        except BufferError:
+            producer.poll(0.5)
+    producer.poll(0)
+
 
 def send(
     items: Iterable[TelemetryMessage | Reject],
     producer: Producer,
     summary: Summary,
     pacer: Pacer,
+    *,
     topic: str = telemetry.TOPIC_RAW,
     dlq_topic: str = telemetry.TOPIC_DLQ,
     flush_timeout: float = 60.0,
 ) -> Summary:
-    def on_delivery(err: Any, msg: Any) -> None:
-        if err is not None:
-            summary.failed += 1
-            if len(summary.errors) < 5:
-                summary.errors.append(str(err))
-        else:
-            summary.delivered += 1
-            if msg.topic() == topic:
-                summary.per_partition[msg.partition()] += 1
-
-    def produce(t: str, key: str, value: bytes) -> None:
-        while True:
-            try:
-                producer.produce(t, value=value, key=key.encode("utf-8"), on_delivery=on_delivery)
-                break
-            except BufferError:  # local queue full: let deliveries drain, then retry
-                producer.poll(0.5)
-        producer.poll(0)
-
+    on_delivery = functools.partial(summary.record_delivery, telemetry_topic=topic)
     for item in items:
         if isinstance(item, Reject):
-            produce(dlq_topic, item.key, item.to_json(summary.replay_run_id))
+            _produce(
+                producer, dlq_topic, item.key, item.to_json(summary.replay_run_id), on_delivery
+            )
             summary.dead_lettered += 1
             continue
         pacer.wait(item.interval_start)
-        produce(topic, item.key(), item.to_json())
+        _produce(producer, topic, item.key(), item.to_json(), on_delivery)
         summary.sent += 1
     remaining = producer.flush(flush_timeout)
     if remaining:
@@ -270,6 +269,7 @@ def run(
     end: date,
     producer: Producer,
     pacer: Pacer,
+    *,
     replay_run_id: str | None = None,
     final_eval: bool = False,
 ) -> Summary:
@@ -323,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
 
     from confluent_kafka import Producer as KafkaProducer
 
-    bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", DEFAULT_BOOTSTRAP)
+    bootstrap = kafka.bootstrap_servers()
     try:
         summary = run(
             args.data_dir,
