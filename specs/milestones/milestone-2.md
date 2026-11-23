@@ -19,11 +19,12 @@ Each step ends with its own check. One commit per step; one `BUILD_LOG.md` entry
 ### Design in one paragraph
 Detection is built **offline first and streamed second**. All feature and model code is plain Python (polars / scikit-learn) and runs on the processed parquet files, so tuning takes minutes, not replays, and CI can test it. The Spark job calls the **same** feature and model code per cell (`applyInPandasWithState`), and Step 9 proves the two paths give identical alarms. Faults are injected as physical effects on traffic (and, for backhaul, latency) before the modeled KPIs are computed, from the injector's own parameters. The ground-truth log is written only by the injector and read only by `src/evaluation/`.
 
-### Step 1 — Fault types in the domain model (~1 h)
+### Step 1 — Fault types in the domain model (~1 h) — *done 2026-11-23*
 - `src/common/domain/faults.yaml` + loader: `cell_outage`, `site_power`, `backhaul`, `congestion`, `config_push`, `no_fault`; root level (an entity type), severity, team (from `entities.yaml`), and the signature predicates with their default thresholds (for M3), as in `specs/01-domain-model.md` §4. Loader checks every reference.
 - ChangeEvent stays an entity (`CHG-<n>`); `change_events` table in Postgres (operational data the system may see; not ground truth).
 - **Tests:** loader validation; an **import-boundary test** that fails if anything under `src/producer/` (the injector) imports the signature section, and if anything outside `src/evaluation/` (and the injector, which writes it) imports the ground-truth module (Rules 6, 15).
 - **Done when:** `load_domain().fault(name)` works for all six; the boundary test passes and fails on a planted violation.
+- **Verified 2026-11-23:** all six fault types load (root levels, `Severity` enum ordered minor < major < critical, team); the five real faults each have a signature in a **separate** `fault_signatures.yaml` / `common.domain.signatures` (checked against the fault types in the same directory). `tests/test_import_boundaries.py`: 0 violations in `src/`; catches planted violations by import (direct, relative, and for Rule 15 transitively through a helper) and by file name in any source or config file (`fault_signatures`, `ground_truth` outside their owners). `change_events` table via `infra/db/002_change_events.sql` + `make db-migrate` (derived list; idempotency enforced by `tests/test_db_migrations.py`), applied to the running stack twice. `make check` 311 passed; integration 24 passed. Reviewed with `/simplify` (4 reviewers) and `/code-review` (9 findings, all fixed).
 
 ### Step 2 — Fault injector + ground-truth log (~2.5 h)
 - `src/producer/injector.py` + `injector_config.yaml` (own parameters, seeded): a **schedule** per split: fault type, root node (chosen from the topology at the right level), onset, duration (3–36 intervals), magnitude, seed. Effects:
@@ -114,4 +115,4 @@ Correlation and root-node ranking (M3, beyond the provisional grouping), classif
 
 ## Status
 
-Plan confirmed 2026-11-23; Step 1 started 2026-11-23. Data ready: all training and validation weeks processed and calibrated (2026-11-22).
+Plan confirmed 2026-11-23. Step 1 done 2026-11-23 (fault types, separate signatures, import/name boundaries for Rules 6 and 15, `change_events`). Next: Step 2 (fault injector + ground-truth log). Data ready: all training and validation weeks processed and calibrated (2026-11-22).

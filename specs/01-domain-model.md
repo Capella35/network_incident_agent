@@ -14,10 +14,14 @@ Values marked **(default)** are starting points, tuned on validation weeks only.
 src/common/domain/
   entities.yaml    # entity types, ID formats, relations
   kpis.yaml        # KPI catalog
-  faults.yaml      # fault taxonomy with machine-checkable signatures
-  lifecycle.yaml   # incident states and allowed transitions (spec: 07-human-gate.md)
-  loader.py        # loads + validates the YAML; one typed object used everywhere
+  faults.yaml            # fault types: root levels, severities, owning team (shared with the injector)
+  fault_signatures.yaml  # how each fault shows in the data, with default thresholds
+  signatures.py          # loads the signatures; never imported by the injector (Rule 15)
+  lifecycle.yaml         # incident states and allowed transitions (spec: 07-human-gate.md; M4)
+  loader.py              # loads + validates the YAML; one typed object used everywhere
 ```
+
+Fault types and signatures are separate files on purpose: the injector shares the types but must not see the signatures, and `tests/test_import_boundaries.py` enforces that (by import, transitively, and by file name). Severity is an ordered enum (`minor < major < critical`).
 
 Postgres: `topology_nodes(node_id, node_type, parent_id, lat, lon, square_id)` (`square_id` set only for Cells) and `topology_edges(src, dst, relation)`, queried with recursive SQL or networkx. Each entity in `entities.yaml` has an `id_pattern` and an `id_template`; code builds IDs only through `make_id()`, which checks the result against the pattern.
 

@@ -25,6 +25,7 @@ Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 next, not planned yet.
 | Fit modeled cell capacity on training days | `make calibrate` |
 | Start / stop the local stack (Kafka, Postgres, MLflow, Grafana); needs `.env` | `make up` / `make down` (`make ps`, `make logs`) |
 | Load the synthetic topology into Postgres | `make db-topology` |
+| Apply schema changes after `001_init.sql` to the running database (idempotent) | `make db-migrate` |
 | Integration tests against the running stack (not in CI) | `make test-integration` |
 | One-off Spark smoke job (Spark profile) | `make spark-smoke` |
 | Replay processed days into Kafka `telemetry.raw` (stack running) | `make replay ARGS="--start 2013-11-04 [--end …] [--speed 0] [--run-id …]"` |

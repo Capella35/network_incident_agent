@@ -1,0 +1,48 @@
+# Fault SIGNATURES: how each fault type shows in the telemetry and topology, with default
+# thresholds (specs/01-domain-model.md §4). Used by the correlator (M3), the classifier's
+# consistency check (M4), the agent's check_signature tool, and the eval graders (M5).
+# NEVER imported by the fault injector (Rule 15; enforced by tests/test_import_boundaries.py):
+# the injector applies physical effects from its own parameters, so the evals measure whether
+# these signatures hold instead of restating them. Thresholds are defaults, tuned on
+# validation weeks only.
+version: 1
+
+signatures:
+  cell_outage:
+    description: >-
+      Traffic below traffic_ratio_max of baseline on one cell; sibling cells at the same
+      site within normal range.
+    thresholds:
+      traffic_ratio_max: 0.05
+
+  site_power:
+    description: >-
+      At least cells_down_share_min of a site's cells drop below traffic_ratio_max of baseline,
+      with onsets within onset_spread_max_intervals of each other.
+    thresholds:
+      cells_down_share_min: 0.9
+      traffic_ratio_max: 0.05
+      onset_spread_max_intervals: 1
+
+  backhaul:
+    description: >-
+      At least sites_alarming_share_min of the sites under one aggregation node alarm within
+      onset_spread_max_intervals; sites under other aggregation nodes stay normal.
+    thresholds:
+      sites_alarming_share_min: 0.7
+      onset_spread_max_intervals: 2
+
+  congestion:
+    description: >-
+      load_ratio above load_ratio_min, with latency_ms or drop_rate above baseline, while
+      traffic is not dropping.
+    thresholds:
+      load_ratio_min: 0.9
+
+  config_push:
+    description: >-
+      Gradual degradation (a slope over at least slope_min_intervals) starting within
+      change_lead_max_intervals after a ChangeEvent on the same site(s).
+    thresholds:
+      slope_min_intervals: 3
+      change_lead_max_intervals: 2

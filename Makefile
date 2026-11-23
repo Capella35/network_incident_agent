@@ -1,9 +1,15 @@
 .PHONY: help setup lint format typecheck test check data topology calibrate clean \
-	env-check up down ps logs spark-smoke db-topology replay sink replay-check dashboards test-integration
+	env-check up down ps logs spark-smoke db-migrate db-topology replay sink replay-check dashboards \
+	test-integration
 
 # Local stack. .env is read by Compose and sourced for Python; its values are never printed.
 COMPOSE := docker compose --env-file .env -f infra/docker-compose.yml
 LOAD_ENV := set -a; . ./.env; set +a;
+# Schema changes after 001_init.sql, in name order. Postgres runs infra/db/ only on an empty
+# volume; `make db-migrate` applies these to an existing one. They must be idempotent
+# (tests/test_db_migrations.py); each file sets ON_ERROR_STOP itself.
+DB_MIGRATIONS := $(sort $(filter-out 001_init.sql,$(notdir $(wildcard infra/db/0*.sql))))
+PSQL_ADMIN = $(COMPOSE) exec -T postgres sh -c 'psql -q -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -f /docker-entrypoint-initdb.d/$(1)'
 
 help:  ## List targets
 	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-17s %s\n", $$1, $$2}'
@@ -56,6 +62,9 @@ logs:  ## Last 50 log lines per service
 
 spark-smoke: env-check  ## One-off Spark local-mode job (Spark profile; off by default)
 	$(COMPOSE) --profile spark run --rm spark
+
+db-migrate: env-check  ## Apply the idempotent DB migrations (DB_MIGRATIONS) to the running stack
+	$(foreach m,$(DB_MIGRATIONS),$(call PSQL_ADMIN,$(m)) &&) true
 
 db-topology: env-check  ## Load the SYNTHETIC topology CSVs into Postgres
 	@$(LOAD_ENV) uv run python -m producer.topology_db

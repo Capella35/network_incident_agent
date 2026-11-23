@@ -20,6 +20,27 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-23 — Milestone 2, step 1: fault types in the domain model
+
+**What was built:**
+- `src/common/domain/faults.yaml` + `Fault` model: six fault types with root levels (topology entity types), severities, owning team, `needs_change_event`; `Severity` enum that orders by rank (minor < major < critical), not alphabetically; `Fault.is_real` (false only for `no_fault`). `load_domain().fault(name)`.
+- Signatures apart: `fault_signatures.yaml` + `common.domain.signatures` (description + named thresholds), validated against the fault types in the same directory.
+- `tests/test_import_boundaries.py`: Rule 15 (no `producer` code reaches `common.domain.signatures`, also transitively) and Rule 6 (only `evaluation` imports `evaluation.ground_truth`, direct), plus a scan of every file under `src/` for the names `fault_signatures` / `ground_truth` outside their owners (catches reading by path).
+- `change_events` table (`infra/db/002_change_events.sql`, idempotent; writer: INSERT/SELECT/UPDATE, no DELETE; readonly: SELECT) and `make db-migrate` (migration list derived from `infra/db/0*.sql`); `tests/test_db_migrations.py` checks every migration per statement for non-idempotent SQL.
+- Loader helpers that replaced repeated code: `_lookup`, `_dupes`, `parse_named`; public `DEFAULT_DIR`, `FrozenModel`, `read_yaml`. Shared `tests/common/conftest.py`.
+
+**Review (new process, before verification):**
+- `/simplify`, 4 reviewers. Applied: Severity enum instead of a hand-built list and checks; signatures checked against the same directory; one parse/lookup/duplicate helper each; shared test fixtures; derived migration list; name scan for data read by path. Skipped: banning relative imports in ruff (config), a typed threshold model per fault (deferred to M3's predicate registry; a drift test added instead), dropping `needs_change_event` (the injector uses it in Step 2).
+- `/code-review` (medium), 9 findings, all fixed: **Severity compared alphabetically** (critical < minor, so `max()` gave the least severe); a YAML entry's own `name:` silently overrode its key; the migration checker read to end of file (one ON CONFLICT excused every INSERT) and missed ADD COLUMN / UNIQUE INDEX / views; import checks were direct-only; plus a test not reaching its branch, a raw AttributeError on a list-shaped section, duplicate/inconsistent fault fields, and a name scan limited to 3 file types.
+
+**Tests run and results:**
+- `make check`: 311 passed, coverage 89.09%. `make test-integration`: 24 passed.
+- Done when: 6 fault types load, 5 signatures; boundary tests pass and catch planted violations (import, relative, transitive, by file name in .py/.yaml/.json). `make db-migrate` applied twice to the running stack (second run: "already exists, skipping").
+
+**Open items:**
+- M3: one executable predicate per signature (a registry keyed by fault type), so the description stops being the only statement of the logic.
+- Step 2 decides where the ground-truth write side lives (the injector, `producer/injector*`, is the name-rule owner).
+
 ## 2026-11-23 — Code-quality guardrails + cleanup (before Milestone 2)
 
 **What was built:**

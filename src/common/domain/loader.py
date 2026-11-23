@@ -1,6 +1,7 @@
-"""Load and validate the domain model (entities + KPI catalog).
+"""Load and validate the domain model (entities, KPI catalog, fault types).
 
-Every component gets entity names, ID formats, team codes, and KPI definitions from here,
+Every component gets entity names, ID formats, team codes, KPI definitions, and fault types
+from here,
 never from string literals elsewhere (CLAUDE.md Rule 15, specs/01-domain-model.md).
 """
 
@@ -8,11 +9,12 @@ from __future__ import annotations
 
 import re
 import string
+from collections.abc import Iterable, Mapping
 from enum import StrEnum
 from functools import cache
 from importlib.resources import files
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -20,7 +22,9 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 # Columns of the Milan activity files (specs/02-telemetry.md). Real KPIs may only map to these.
 MILAN_FIELDS = frozenset({"sms_in", "sms_out", "call_in", "call_out", "internet"})
 
-_DEFAULT_DIR = files("common.domain")
+DEFAULT_DIR = files("common.domain")
+T = TypeVar("T")
+M = TypeVar("M", bound=BaseModel)
 
 # Sample values used to check that each id_template produces IDs matching its id_pattern.
 _TEMPLATE_SAMPLES = {
@@ -35,7 +39,7 @@ class DomainError(ValueError):
     """The domain YAML is invalid."""
 
 
-class _Frozen(BaseModel):
+class FrozenModel(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
@@ -58,7 +62,32 @@ class KpiSource(StrEnum):
     DERIVED = "derived"
 
 
-class EntityType(_Frozen):
+class Severity(StrEnum):
+    """Incident severity, lowest first. Compares by that order, not alphabetically (a plain
+    StrEnum would put critical < major < minor), so `max(severities)` is the worst one."""
+
+    MINOR = "minor"
+    MAJOR = "major"
+    CRITICAL = "critical"
+
+    @property
+    def rank(self) -> int:
+        return list(Severity).index(self)
+
+    def __lt__(self, other: object) -> bool:
+        return self.rank < other.rank if isinstance(other, Severity) else NotImplemented
+
+    def __le__(self, other: object) -> bool:
+        return self.rank <= other.rank if isinstance(other, Severity) else NotImplemented
+
+    def __gt__(self, other: object) -> bool:
+        return self.rank > other.rank if isinstance(other, Severity) else NotImplemented
+
+    def __ge__(self, other: object) -> bool:
+        return self.rank >= other.rank if isinstance(other, Severity) else NotImplemented
+
+
+class EntityType(FrozenModel):
     name: str
     id_pattern: str
     id_template: str
@@ -98,18 +127,18 @@ class EntityType(_Frozen):
         return entity_id
 
 
-class Relation(_Frozen):
+class Relation(FrozenModel):
     name: str
     src: str
     dst: str
 
 
-class Team(_Frozen):
+class Team(FrozenModel):
     code: str = Field(pattern=r"^[a-z][a-z_]*$")
     name: str
 
 
-class Kpi(_Frozen):
+class Kpi(FrozenModel):
     name: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
     unit: Unit
     description: str
@@ -135,11 +164,40 @@ class Kpi(_Frozen):
         return self
 
 
-class Domain(_Frozen):
+class Fault(FrozenModel):
+    """A fault type: where it can be rooted, how severe it is, who owns it (faults.yaml).
+    Its signature lives in `common.domain.signatures`, apart, so the injector cannot use it."""
+
+    name: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    description: str
+    root_levels: tuple[str, ...]
+    severities: tuple[Severity, ...]
+    team: str | None
+    needs_change_event: bool = False
+
+    @property
+    def is_real(self) -> bool:
+        """False only for the "nothing wrong" label (no root, no severity, no team)."""
+        return bool(self.root_levels)
+
+    @model_validator(mode="after")
+    def _real_or_label(self) -> Fault:
+        if self.is_real != bool(self.severities) or self.is_real != (self.team is not None):
+            raise ValueError(f"fault {self.name!r}: root_levels, severities, team: all or none")
+        if self.needs_change_event and not self.is_real:
+            raise ValueError(f"fault {self.name!r}: needs_change_event only for a real fault")
+        for field in ("root_levels", "severities"):
+            if dupes := _dupes(map(str, getattr(self, field))):
+                raise ValueError(f"fault {self.name!r}: duplicate {field} {dupes}")
+        return self
+
+
+class Domain(FrozenModel):
     entities: dict[str, EntityType]
     relations: tuple[Relation, ...]
     teams: tuple[Team, ...]
     kpis: dict[str, Kpi]
+    faults: dict[str, Fault]
 
     @model_validator(mode="after")
     def _check_references(self) -> Domain:
@@ -153,9 +211,18 @@ class Domain(_Frozen):
                     raise ValueError(f"relation {rel.name}: unknown entity {end!r}")
         self._check_hierarchy()
         codes = [t.code for t in self.teams]
-        if len(codes) != len(set(codes)):
-            raise ValueError("duplicate team code")
+        if dupes := _dupes(codes):
+            raise ValueError(f"duplicate team codes: {dupes}")
+        self._check_faults(set(codes))
         return self
+
+    def _check_faults(self, team_codes: set[str]) -> None:
+        topology = {e.name for e in self.topology_types()}
+        for f in self.faults.values():
+            if unknown := set(f.root_levels) - topology:
+                raise ValueError(f"fault {f.name!r}: root levels not in the topology {unknown}")
+            if f.team is not None and f.team not in team_codes:
+                raise ValueError(f"fault {f.name!r}: unknown team {f.team!r}")
 
     def _check_hierarchy(self) -> None:
         """Parent chains must end at a root, and levels must increase by one per step."""
@@ -175,16 +242,13 @@ class Domain(_Frozen):
 
     # --- lookups -------------------------------------------------------------------------
     def entity(self, name: str) -> EntityType:
-        try:
-            return self.entities[name]
-        except KeyError:
-            raise KeyError(f"unknown entity type {name!r}") from None
+        return _lookup(self.entities, name, "entity type")
 
     def kpi(self, name: str) -> Kpi:
-        try:
-            return self.kpis[name]
-        except KeyError:
-            raise KeyError(f"unknown KPI {name!r}") from None
+        return _lookup(self.kpis, name, "KPI")
+
+    def fault(self, name: str) -> Fault:
+        return _lookup(self.faults, name, "fault type")
 
     def parent_relation(self, child: str) -> Relation:
         """The relation from `child`'s parent type to `child` (e.g. Site -> Cell)."""
@@ -195,10 +259,7 @@ class Domain(_Frozen):
         raise KeyError(f"no relation from {parent!r} to {child!r}")
 
     def team(self, code: str) -> Team:
-        for t in self.teams:
-            if t.code == code:
-                return t
-        raise KeyError(f"unknown team {code!r}")
+        return _lookup({t.code: t for t in self.teams}, code, "team")
 
     def topology_types(self) -> list[EntityType]:
         """Topology entity types ordered root (Core) first."""
@@ -206,7 +267,34 @@ class Domain(_Frozen):
         return sorted(levelled, key=lambda e: e.topology_level or 0)
 
 
-def _read_yaml(path: Path | Any) -> dict[str, Any]:
+def _lookup(mapping: Mapping[str, T], key: str, what: str) -> T:
+    try:
+        return mapping[key]
+    except KeyError:
+        raise KeyError(f"unknown {what} {key!r}") from None
+
+
+def _dupes(values: Iterable[str]) -> list[str]:
+    """Values that occur more than once, sorted (for error messages that name them)."""
+    seen = list(values)
+    return sorted({v for v in seen if seen.count(v) > 1})
+
+
+def parse_named(raw: dict[str, Any], key: str, model: type[M], field: str = "name") -> dict[str, M]:
+    """`{name: spec}` under `key` in a YAML document -> `{name: model(<field>=name, **spec)}`.
+    The mapping key is the name; a spec may not set `field` itself (it could disagree)."""
+    section = raw.get(key) or {}
+    if not isinstance(section, dict):
+        raise ValueError(f"{key!r} must be a mapping of name -> definition")
+    for name, spec in section.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f"{key}.{name}: expected a mapping")
+        if field in spec:
+            raise ValueError(f"{key}.{name}: must not set {field!r}; the key is the {field}")
+    return {name: model(**{field: name, **spec}) for name, spec in section.items()}
+
+
+def read_yaml(path: Path | Any) -> dict[str, Any]:
     data = yaml.safe_load(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise DomainError(f"{path}: expected a mapping at top level")
@@ -217,23 +305,20 @@ def _read_yaml(path: Path | Any) -> dict[str, Any]:
 
 def load_domain_from(directory: Path | Any) -> Domain:
     """Load and validate the domain model from a directory holding the YAML files."""
-    ent_raw = _read_yaml(directory / "entities.yaml")
-    kpi_raw = _read_yaml(directory / "kpis.yaml")
+    ent_raw = read_yaml(directory / "entities.yaml")
+    kpi_raw = read_yaml(directory / "kpis.yaml")
+    fault_raw = read_yaml(directory / "faults.yaml")
 
-    kpi_names = [k.get("name") for k in kpi_raw.get("kpis", [])]
-    dupes = sorted({n for n in kpi_names if kpi_names.count(n) > 1})
-    if dupes:
+    if dupes := _dupes(k.get("name") for k in kpi_raw.get("kpis", [])):
         raise DomainError(f"duplicate KPI names: {dupes}")
 
     try:
         return Domain(
-            entities={
-                name: EntityType(name=name, **spec)
-                for name, spec in (ent_raw.get("entities") or {}).items()
-            },
+            entities=parse_named(ent_raw, "entities", EntityType),
             relations=tuple(Relation(**r) for r in ent_raw.get("relations", [])),
             teams=tuple(Team(**t) for t in ent_raw.get("teams", [])),
             kpis={k["name"]: Kpi(**k) for k in kpi_raw.get("kpis", [])},
+            faults=parse_named(fault_raw, "faults", Fault),
         )
     except (ValueError, TypeError) as exc:  # pydantic ValidationError is a ValueError
         raise DomainError(str(exc)) from exc
@@ -242,4 +327,4 @@ def load_domain_from(directory: Path | Any) -> Domain:
 @cache
 def load_domain() -> Domain:
     """The project's domain model (cached; immutable)."""
-    return load_domain_from(_DEFAULT_DIR)
+    return load_domain_from(DEFAULT_DIR)

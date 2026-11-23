@@ -1,0 +1,44 @@
+# Fault types: root levels, severities, owning team (specs/01-domain-model.md §4; Rule 15).
+# Shared with the fault injector. The SIGNATURES (how each fault shows in the telemetry, with
+# thresholds) live in fault_signatures.yaml, which the injector must never import, so the evals
+# test the signatures instead of restating them.
+version: 1
+
+# Severities are an enum in loader.py (minor < major < critical).
+faults:
+  cell_outage:
+    description: One cell stops carrying traffic
+    root_levels: [Cell]
+    severities: [minor]
+    team: ran
+
+  site_power:
+    description: A site loses power; all of its cells go down together
+    root_levels: [Site]
+    severities: [major]
+    team: field_ops
+
+  backhaul:
+    description: The transport link of an aggregation node fails; every site behind it degrades
+    root_levels: [AggregationNode]
+    severities: [critical]
+    team: transport
+
+  congestion:
+    description: Demand exceeds a cell's or site's capacity; latency and drops rise
+    root_levels: [Cell, Site]
+    severities: [minor, major]
+    team: ran_capacity
+
+  config_push:
+    description: A configuration change degrades the sites it was applied to, gradually
+    root_levels: [Site]
+    severities: [major]
+    team: core_config
+    needs_change_event: true
+
+  no_fault:
+    description: Nothing is wrong in the network (e.g. holiday traffic); used to label false alarms
+    root_levels: []
+    severities: []
+    team: null
