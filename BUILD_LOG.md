@@ -20,6 +20,22 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-22 — Milestone 2 prep: training weeks 2–4 + validation weeks
+
+**What was built:**
+- Downloaded (manual, user, 2026-11-22): 35 daily files, 2013-11-11 → 2013-12-15 (training weeks 2–4 + both validation weeks), 11 GB. No test-week file.
+- `make data`: all 35 passed size + MD5 against the published values; 4.36–5.71 M rows each → 20,736 rows per day (144 cells × 144 intervals), 0 gaps, 0 out-of-day rows; ~70 s total. Topology rebuilt byte-identical (nodes SHA-256 `ab6cc146…`, same as in Postgres). Processed days on disk: 2013-11-01 → 12-15 (45 days, 31 MB). Manifest: 46 entries, all MD5 = published.
+- `make calibrate` on all 28 training days (2013-11-04 → 12-01; validation days not read): per-cell capacity vs the week-1 calibration: median ratio 1.008 (range 0.79–1.20).
+
+**Tests run and results (MODELED values over all 28 training days, 580,608 rows):**
+- `load_ratio`: p50 0.321, **p99 0.800** (design target), max 2.65; 0.23% of rows > 0.9 (week-1 calibration: 0.22%).
+- `latency_ms`: p50 29.5, p99 100.9.
+
+**Open items:**
+- Raw files deleted with the user's OK: `make data ARGS="--delete-raw"` re-verified all 35, then deleted them; only `data/raw/milano-grid.geojson` remains (3 MB). Free disk 13 → 46 GiB. Hashes stay in the manifest (46 entries, all MD5 = published); 45 processed days on disk.
+- `telemetry_raw` rows from earlier runs used the week-1 calibration; any new replay uses the 4-week one. Matters only if old and new runs are compared directly.
+- Still for M2: busy peaks with `load_ratio` > 0.9 (0.23% of rows) will look like congestion against the false-alarm budget.
+
 ## 2026-11-22 — Milestone 1, step 11: close-out — **Milestone 1 done**
 
 **What was built:**
