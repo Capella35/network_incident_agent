@@ -20,6 +20,27 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-23 — Milestone 2, step 2: fault injector + ground-truth log
+
+**What was built:**
+- `src/producer/injector.py` + `injector_config.yaml` (SYNTHETIC, own parameters, never the signatures): seeded schedule per split (type by weight, root at an allowed level with cells under it, onset, duration, severity, magnitudes; no two faults on a shared cell at once); one effect model (traffic × factor before the KPI model, latency × factor after, optional ramp); change events (one before each config push + 2 decoys per fault); `write_ground_truth` → `data/processed/ground_truth/<split>-<seed>.parquet` + `.meta.json` with a schedule **fingerprint**; `make inject`. Test split needs `--final-eval`.
+- `replay.telemetry_for(data_dir, days, inject=...)`: the one assembly path for the replay and offline code; returns rows, rejects, fault count, change events, fingerprint (never the faults). `make replay … --inject` regenerates the schedule, refuses if its fingerprint differs from the ground truth, writes the run's change events to Postgres, then sends.
+- `topology.Index` (nodes by type, cells under a node, cell maps; one CSV parser) replaces three readers of `topology_nodes.csv`.
+
+**Review (before verification):**
+- `/simplify`, 4 reviewers. Applied: one shared `telemetry_for` (offline Steps 3–6 and Spark parity need the same rows); one `inject()` wrapper (no hidden column contract through the KPI model); schedule fingerprint + drift check; `--inject` as a flag; `topology.Index`; reuse of `FrozenModel`, `read_yaml`, `manifest.save`; `_draw` helper, change IDs set at placement, test fixtures reuse `test_kpi_model.traffic` and a real generated topology. Skipped (outside the diff): a generic upsert builder shared with the sink, moving `kpi_model`/`topology_db` onto the shared loaders, integrity checks in the topology loader.
+- `/code-review` (medium), 7 findings, all fixed: **`telemetry_for` returned the faults** (ground truth reachable by detector code; now counts only, plus a boundary rule on `producer.injector`); **a config push's change event could be dropped** when it fell just before the replayed day; **`--inject` crashed with a raw traceback** if Postgres was unavailable; roots with no cells (empty fault) or levels with no nodes (crash); a bare KeyError for a cell without a square; the fingerprint was never compared; config errors showed a raw traceback. The name-scan boundary test caught one of my own fixes (`replay.py` mentioning `ground_truth`); renamed. The fixes were tested but not re-reviewed by a second `/code-review` pass.
+
+**Tests run and results:**
+- `make check`: 334 passed, coverage 89.62%. `make test-integration`: 25 passed.
+- Done when: `make inject ARGS="--split validation"` → 57 faults (site_power 17, congestion 12, cell_outage 11, config_push 9, backhaul 8), 123 change events, fingerprint `62d292f4…`. Applied to all 14 validation days (290,304 rows): exactly the 5,425 cell-intervals in fault windows changed, **0 mismatches** vs multipliers computed independently from the ground-truth file. Spot check: SITE-7 site_power, all 3 cells ×0.038 for exactly 09:00–10:20 UTC on 12-02; 08:50 and 10:30 untouched.
+- Live: `make replay ARGS="--start 2013-12-02 --speed 0 --inject --run-id step2-inject-2013-12-02"` → 3 faults, 4 change events in Postgres, schedule matched, 20,736 sent; sink wrote them (SITE-7 window min internet 21.15).
+
+**Open items:**
+- M6: test-split faults must use parameters disjoint from training/validation (specs/09-evals.md); today only the seed differs.
+- Busy-peak false alarms (load_ratio > 0.9 on 0.23% of rows) still to handle in Steps 3–4.
+- Outside-the-diff reuse left for later: shared upsert builder (sink + injector), shared YAML loader for `kpi_model`/`topology`, integrity checks when loading the topology.
+
 ## 2026-11-23 — Milestone 2, step 1: fault types in the domain model
 
 **What was built:**

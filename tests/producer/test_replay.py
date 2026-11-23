@@ -195,7 +195,9 @@ def test_pacer_rejects_bad_settings(speed: float, rate: float | None) -> None:
 
 def test_run_sends_every_row_in_order(data_dir: Path) -> None:
     producer = FakeProducer()
-    s = replay.run(data_dir, DAY, DAY, producer, fast(), replay_run_id="run-a")
+    s = replay.run(
+        data_dir, DAY, DAY, producer, fast(), options=replay.ReplayOptions(replay_run_id="run-a")
+    )
     assert (s.sent, s.dead_lettered, s.failed) == (12, 0, 0)
     assert s.delivered == 12 and sum(s.per_partition.values()) == 12
     topics = {t for t, _, _ in producer.sent}
@@ -212,7 +214,9 @@ def test_run_sends_every_row_in_order(data_dir: Path) -> None:
 def test_replay_is_deterministic_per_partition(data_dir: Path) -> None:
     def keys_by_partition(run_id: str) -> dict[int, list[str]]:
         producer = FakeProducer()
-        replay.run(data_dir, DAY, DAY, producer, fast(), replay_run_id=run_id)
+        replay.run(
+            data_dir, DAY, DAY, producer, fast(), options=replay.ReplayOptions(replay_run_id=run_id)
+        )
         out: dict[int, list[str]] = {}
         for _, key, _ in producer.sent:
             out.setdefault(zlib.crc32(key.encode()) % PARTITIONS, []).append(key)

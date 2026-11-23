@@ -1,4 +1,4 @@
-.PHONY: help setup lint format typecheck test check data topology calibrate clean \
+.PHONY: help setup lint format typecheck test check data topology calibrate inject clean \
 	env-check up down ps logs spark-smoke db-migrate db-topology replay sink replay-check dashboards \
 	test-integration
 
@@ -44,6 +44,9 @@ topology:  ## Rebuild only the SYNTHETIC topology from data/processed/subset.jso
 
 calibrate:  ## Fit MODELED cell capacity on processed training days -> kpi_calibration.json
 	uv run python -m producer.kpi_model
+
+inject:  ## Write a split's SYNTHETIC fault schedule (ground truth, for evaluation) (ARGS="--split validation")
+	uv run python -m producer.injector $(ARGS)
 
 env-check:
 	@test -f .env || { echo "No .env: cp .env.example .env, then set every password (12+ chars)"; exit 1; }

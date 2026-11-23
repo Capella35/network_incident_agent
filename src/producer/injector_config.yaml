@@ -1,0 +1,45 @@
+# Fault injector parameters (milestone 2, step 2). Everything here is SYNTHETIC.
+# These are the injector's OWN physical effects, chosen independently of the fault signatures
+# (Rule 15: the injector never reads them), so the evals test whether the signatures hold.
+#
+# Effect model, per affected cell and interval k (0 = onset) of a fault:
+#   intensity = min(1, (k + 1) / ramp)            ramp = 1 means an immediate fault
+#   traffic  *= 1 + intensity * (traffic_factor - 1)   on all five Milan traffic fields
+#   latency  *= 1 + intensity * (latency_factor - 1)   after the KPI model (default factor 1)
+# Traffic is scaled before the modeled KPIs are computed, so load_ratio, latency, and drops
+# respond to it through the normal KPI model.
+version: 1
+
+seeds:            # one schedule per split; same seed -> same schedule
+  train: 20131104
+  validation: 20131202
+  test: 20131216  # generated only with --final-eval (Rule 7)
+
+faults_per_day: [3, 5]        # inclusive; uniform per day
+decoy_changes_per_fault: 2    # harmless change events, so a change alone is never a label
+change_lead_intervals: [1, 2] # a config push's change event comes this many intervals earlier
+
+types:  # keys must be the real fault types in common/domain/faults.yaml
+  cell_outage:
+    weight: 1
+    duration: [3, 36]          # intervals of 10 minutes, inclusive
+    traffic_factor: [0.0, 0.05]
+  site_power:
+    weight: 1
+    duration: [3, 36]
+    traffic_factor: [0.0, 0.05]
+  backhaul:
+    weight: 1
+    duration: [3, 24]
+    traffic_factor: [0.3, 0.7]
+    latency_factor: [1.5, 3.0]
+  congestion:
+    weight: 1
+    duration: [3, 24]
+    traffic_factor: [1.5, 2.5]
+  config_push:
+    weight: 1
+    duration: [6, 36]
+    traffic_factor: [0.5, 0.8]
+    latency_factor: [1.3, 2.0]
+    ramp: [3, 6]               # gradual: full effect after this many intervals

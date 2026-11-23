@@ -17,6 +17,7 @@ import logging
 import math
 import random
 import sys
+from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from importlib.resources import files
 from pathlib import Path
@@ -218,24 +219,81 @@ def write(topo: Topology, out_dir: Path, meta: dict[str, Any]) -> dict[str, str]
     return shas
 
 
+def load_nodes(nodes_csv: Path) -> list[Node]:
+    """All nodes of a written `topology_nodes.csv` (SYNTHETIC topology). The one CSV parser."""
+    with nodes_csv.open(newline="", encoding="utf-8") as fh:
+        return [
+            Node(
+                node_id=r["node_id"],
+                node_type=r["node_type"],
+                parent_id=r["parent_id"] or None,
+                lat=float(r["lat"]),
+                lon=float(r["lon"]),
+                square_id=int(r["square_id"]) if r["square_id"] else None,
+            )
+            for r in csv.DictReader(fh)
+        ]
+
+
+class Index:
+    """The SYNTHETIC topology as lookups: nodes by type, cells under any node, cell maps.
+    Shared by the replay, the fault injector, and (M3) the correlator."""
+
+    def __init__(self, nodes: Iterable[Node]) -> None:
+        self.nodes = {n.node_id: n for n in nodes}
+        types = load_domain().topology_types()
+        self.cell_type, self.site_type = types[-1].name, types[-2].name
+        self._by_type: dict[str, list[str]] = {}
+        self._children: dict[str, list[str]] = {}
+        for n in sorted(self.nodes.values(), key=lambda n: n.node_id):
+            self._by_type.setdefault(n.node_type, []).append(n.node_id)
+            if n.parent_id is not None:
+                self._children.setdefault(n.parent_id, []).append(n.node_id)
+
+    def of_type(self, node_type: str) -> list[str]:
+        """Node IDs of one type, sorted."""
+        return self._by_type.get(node_type, [])
+
+    def cells_under(self, node_id: str) -> tuple[str, ...]:
+        """The cells at or below a node, sorted."""
+        if self.nodes[node_id].node_type == self.cell_type:
+            return (node_id,)
+        return tuple(
+            sorted(c for k in self._children.get(node_id, ()) for c in self.cells_under(k))
+        )
+
+    def cells_by_square(self) -> dict[int, str]:
+        """Milan square_id -> Cell node_id."""
+        return {
+            n.square_id: n.node_id
+            for n in self.nodes.values()
+            if n.node_type == self.cell_type and n.square_id is not None
+        }
+
+    def cell_sites(self) -> dict[str, str]:
+        """Cell node_id -> parent Site node_id."""
+        return {
+            n.node_id: n.parent_id
+            for n in self.nodes.values()
+            if n.node_type == self.cell_type and n.parent_id is not None
+        }
+
+
+def load_index(processed: Path) -> Index:
+    nodes_csv = processed / "topology_nodes.csv"
+    if not nodes_csv.exists():
+        raise FileNotFoundError(f"{nodes_csv} missing: run `make data` first")
+    return Index(load_nodes(nodes_csv))
+
+
 def load_cells(nodes_csv: Path) -> dict[int, str]:
     """Map Milan square_id -> Cell node_id from a written `topology_nodes.csv`."""
-    cell_type = load_domain().topology_types()[-1].name
-    with nodes_csv.open(newline="", encoding="utf-8") as fh:
-        return {
-            int(r["square_id"]): r["node_id"]
-            for r in csv.DictReader(fh)
-            if r["node_type"] == cell_type
-        }
+    return Index(load_nodes(nodes_csv)).cells_by_square()
 
 
 def load_cell_sites(nodes_csv: Path) -> dict[str, str]:
     """Map Cell node_id -> parent Site node_id from a written `topology_nodes.csv`."""
-    cell_type = load_domain().topology_types()[-1].name
-    with nodes_csv.open(newline="", encoding="utf-8") as fh:
-        return {
-            r["node_id"]: r["parent_id"] for r in csv.DictReader(fh) if r["node_type"] == cell_type
-        }
+    return Index(load_nodes(nodes_csv)).cell_sites()
 
 
 def run(data_dir: Path, config_path: Path | None = None) -> Topology:

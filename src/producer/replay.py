@@ -26,18 +26,20 @@ import sys
 import time
 import uuid
 from collections import Counter
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
 import polars as pl
+import psycopg
 from pydantic import ValidationError
 
 from common import kafka, splits, telemetry
+from common.db import DbConfigError, DbSettings, Role
 from common.telemetry import TelemetryMessage
-from producer import kpi_model, topology
+from producer import injector, kpi_model, topology
 
 log = logging.getLogger("producer.replay")
 
@@ -100,8 +102,12 @@ def build_rows(
     cell_sites: dict[str, str],
     calibration: dict[str, Any],
     params: kpi_model.Params,
+    *,
+    fault_effects: pl.DataFrame | None = None,
 ) -> tuple[pl.DataFrame, list[Reject]]:
-    """Join topology + modeled KPIs, sort by (interval_start, cell_id); reject unknown squares."""
+    """Join topology + modeled KPIs, sort by (interval_start, cell_id); reject unknown squares.
+    With `fault_effects` (`injector.effects`), SYNTHETIC faults scale traffic before the KPI
+    model and latency after it."""
     known = traffic.filter(pl.col("square_id").is_in(list(cells)))
     rejects = [
         Reject(
@@ -111,7 +117,12 @@ def build_rows(
         )
         for r in traffic.filter(~pl.col("square_id").is_in(list(cells))).iter_rows(named=True)
     ]
-    rows = kpi_model.add_kpis(known, cells, calibration, params).with_columns(
+
+    def model(frame: pl.DataFrame) -> pl.DataFrame:
+        return kpi_model.add_kpis(frame, cells, calibration, params)
+
+    rows = model(known) if fault_effects is None else injector.inject(known, fault_effects, model)
+    rows = rows.with_columns(
         pl.col("cell_id").replace_strict(cell_sites, default=None).alias("site_id")
     )
     columns = [
@@ -200,6 +211,7 @@ def kafka_config(bootstrap: str) -> kafka.Config:
 @dataclass
 class Summary:
     replay_run_id: str
+    schedule_fingerprint: str | None = None  # set when SYNTHETIC faults were injected
     sent: int = 0
     dead_lettered: int = 0
     delivered: int = 0
@@ -263,6 +275,65 @@ def send(
 # --- Entry point -----------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class Telemetry:
+    """One day range's telemetry rows, ready to send or to use offline. With injection: how
+    many SYNTHETIC faults went in, the change events to log, and the schedule's fingerprint.
+    Never the faults themselves: those are ground truth, for src/evaluation/ only (Rule 6)."""
+
+    rows: pl.DataFrame
+    rejects: list[Reject]
+    n_faults: int = 0
+    change_events: tuple[injector.ChangeEvent, ...] = ()
+    schedule_fingerprint: str | None = None
+
+
+def telemetry_for(
+    data_dir: Path, days: Sequence[date], *, inject: bool = False, final_eval: bool = False
+) -> Telemetry:
+    """The one place telemetry is assembled: the replay sends it; offline feature and tuning
+    code (milestone 2) uses it directly, so both see exactly the same (injected) rows."""
+    processed = data_dir / "processed"
+    index = topology.load_index(processed)
+    cells = index.cells_by_square()
+    faults: tuple[injector.InjectedFault, ...] = ()
+    events: list[injector.ChangeEvent] = []
+    fingerprint = None
+    if inject:
+        split = splits.split_of(days[0])
+        if split is None or any(splits.split_of(d) is not split for d in days):
+            raise ReplayError("--inject: the replayed days must all be in one split")
+        cfg = injector.load_config()
+        faults, events, fingerprint = injector.for_days(
+            split, days, index, cfg, final_eval=final_eval
+        )
+        injector.check_schedule(processed, split, cfg, fingerprint)
+    fx = injector.effects(faults, {c: sq for sq, c in cells.items()}) if faults else None
+    rows, rejects = build_rows(
+        load_traffic(data_dir, days),
+        cells,
+        index.cell_sites(),
+        kpi_model.load_calibration(data_dir),
+        kpi_model.load_params(),
+        fault_effects=fx,
+    )
+    return Telemetry(rows, rejects, len(faults), tuple(events), fingerprint)
+
+
+ChangeLogger = Callable[[str, Sequence[injector.ChangeEvent]], None]
+
+
+@dataclass(frozen=True)
+class ReplayOptions:
+    replay_run_id: str | None = None  # default: a new UUID
+    final_eval: bool = False  # allow test-week days (Rule 7)
+    inject: bool = False  # inject the days' split's SYNTHETIC fault schedule
+    log_changes: ChangeLogger | None = None  # where injected change events go (Postgres)
+
+
+DEFAULT_OPTIONS = ReplayOptions()
+
+
 def run(
     data_dir: Path,
     start: date,
@@ -270,35 +341,36 @@ def run(
     producer: Producer,
     pacer: Pacer,
     *,
-    replay_run_id: str | None = None,
-    final_eval: bool = False,
+    options: ReplayOptions = DEFAULT_OPTIONS,
 ) -> Summary:
     telemetry.check_against_domain()
-    days = days_in_range(start, end, final_eval)
-    processed = data_dir / "processed"
-    nodes = processed / "topology_nodes.csv"
-    if not nodes.exists():
-        raise ReplayError(f"{nodes} missing: run `make data` first")
-    rows, rejects = build_rows(
-        load_traffic(data_dir, days),
-        topology.load_cells(nodes),
-        topology.load_cell_sites(nodes),
-        kpi_model.load_calibration(data_dir),
-        kpi_model.load_params(),
+    days = days_in_range(start, end, options.final_eval)
+    data = telemetry_for(data_dir, days, inject=options.inject, final_eval=options.final_eval)
+    summary = Summary(
+        replay_run_id=options.replay_run_id or str(uuid.uuid4()),
+        schedule_fingerprint=data.schedule_fingerprint,
     )
-    summary = Summary(replay_run_id=replay_run_id or str(uuid.uuid4()))
+    if data.change_events and options.log_changes is not None:
+        options.log_changes(summary.replay_run_id, data.change_events)
     log.info(
-        "replay %s: %s -> %s, %d rows, %d unknown-square rows",
+        "replay %s: %s -> %s, %d rows, %d unknown-square rows, %d SYNTHETIC faults, "
+        "%d change events, schedule %s",
         summary.replay_run_id,
         days[0],
         days[-1],
-        rows.height,
-        len(rejects),
+        data.rows.height,
+        len(data.rejects),
+        data.n_faults,
+        len(data.change_events),
+        (data.schedule_fingerprint or "-")[:12],
     )
-    items = itertools.chain(
-        rejects, to_messages(rows, summary.replay_run_id)
-    )  # lazy: one row at a time
+    items = itertools.chain(data.rejects, to_messages(data.rows, summary.replay_run_id))
     return send(items, producer, summary, pacer)
+
+
+def _postgres_change_logger(run_id: str, events: Sequence[injector.ChangeEvent]) -> None:
+    with DbSettings.from_env(Role.PIPELINE_WRITER).connect() as conn:
+        injector.write_change_events(conn, run_id, events)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -310,6 +382,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--max-rate", type=float, default=None, help="messages per second cap")
     ap.add_argument("--run-id", default=None, help="replay_run_id (default: a new UUID)")
     ap.add_argument("--final-eval", action="store_true", help="allow test-week days (Rule 7)")
+    ap.add_argument(
+        "--inject",
+        action="store_true",
+        help="inject the days' split's SYNTHETIC fault schedule and log its change events",
+    )
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
@@ -323,18 +400,29 @@ def main(argv: list[str] | None = None) -> int:
 
     from confluent_kafka import Producer as KafkaProducer
 
-    bootstrap = kafka.bootstrap_servers()
+    options = ReplayOptions(
+        replay_run_id=args.run_id,
+        final_eval=args.final_eval,
+        inject=args.inject,
+        log_changes=_postgres_change_logger,
+    )
     try:
         summary = run(
             args.data_dir,
             args.start,
             end,
-            KafkaProducer(kafka_config(bootstrap)),
+            KafkaProducer(kafka_config(kafka.bootstrap_servers())),
             pacer,
-            replay_run_id=args.run_id,
-            final_eval=args.final_eval,
+            options=options,
         )
-    except (ReplayError, FileNotFoundError, ValueError) as exc:
+    except (
+        ReplayError,
+        injector.InjectorError,
+        FileNotFoundError,
+        ValueError,
+        DbConfigError,
+        psycopg.Error,
+    ) as exc:
         log.error("%s", exc)
         return 1
     log.info(

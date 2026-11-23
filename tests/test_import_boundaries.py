@@ -33,6 +33,10 @@ RULES = (
     # Direct only: tuning (models/) calls evaluation/ for its scores and gets numbers back, by
     # design (specs/03-detection.md); what must not happen is reading the log itself.
     Rule("evaluation.ground_truth", allowed_in=("evaluation",), why="Rule 6"),
+    # The injector builds the ground truth: only the producer (replay) and evaluation use it;
+    # detectors, correlator, classifier, and agent get telemetry via `replay.telemetry_for`,
+    # which returns rows and counts, never the faults.
+    Rule("producer.injector", allowed_in=("producer", "evaluation"), why="Rule 6"),
 )
 
 
@@ -164,11 +168,16 @@ def test_planted_violations_are_caught(tmp_path: Path) -> None:
     _plant(tmp_path, "evaluation/__init__.py", "")
     _plant(tmp_path, "evaluation/metrics.py", "from .ground_truth import read\n")  # relative, ok
     _plant(tmp_path, "agent/tools.py", "from ..evaluation import ground_truth\n")
+    _plant(tmp_path, "models/tune.py", "from producer.injector import schedule\n")
+    _plant(tmp_path, "producer/replay.py", "from producer import injector\n")  # allowed
     assert violations(tmp_path) == [
         "agent.tools imports evaluation.ground_truth (Rule 6)",
         "models.detector imports evaluation.ground_truth (Rule 6)",
+        "models.tune imports producer.injector (Rule 6)",
         "producer.injector imports common.domain.signatures (Rule 15)",
         "producer.other imports common.domain.signatures (Rule 15)",
+        # transitive: the planted replay reaches the signatures through the planted injector
+        "producer.replay imports common.domain.signatures (Rule 15)",
     ]
 
 

@@ -298,7 +298,12 @@ def run_check(data_dir: Path, start: date, end: date, bootstrap: str) -> Report:
         for run in runs:
             before = end_offsets(reader, topic, partitions)
             summary = replay.run(
-                data_dir, start, end, producer, replay.Pacer(speed=0), replay_run_id=run
+                data_dir,
+                start,
+                end,
+                producer,
+                replay.Pacer(speed=0),
+                options=replay.ReplayOptions(replay_run_id=run),
             )
             if summary.failed or summary.dead_lettered:
                 raise CheckError(
