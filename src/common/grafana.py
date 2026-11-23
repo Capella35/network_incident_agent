@@ -47,9 +47,14 @@ DATA_LABEL = {
     KpiSource.DERIVED: "derived",
 }
 
-ATTRIBUTION_URL = "https://doi.org/10.7910/DVN/EGZHFV"  # dataset page (specs/02-telemetry.md)
+# ODbL attribution exactly as the publisher's terms of use require (Harvard Dataverse,
+# doi:10.7910/DVN/EGZHFV, checked 2026-11-22; specs/02-telemetry.md, Rules).
+BIGDATACHALLENGE_URL = "http://www.telecomitalia.com/tit/en/bigdatachallenge.html"
+ODI_TRENTO_URL = "http://theodi.fbk.eu/"
+DATASET_URL = "https://doi.org/10.7910/DVN/EGZHFV"
 FOOTER = (
-    "Traffic: real ([from BigDataChallenge contest](" + ATTRIBUTION_URL + "), ODbL 1.0). "
+    f"Traffic: real ([from BigDataChallenge contest]({BIGDATACHALLENGE_URL}); "
+    f"[ODI node Trento]({ODI_TRENTO_URL}); [dataset]({DATASET_URL}), ODbL 1.0). "
     "Topology and latency: synthetic/modeled. Not a real network."
 )
 

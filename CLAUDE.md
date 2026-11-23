@@ -11,7 +11,7 @@ The project lives in `~/Projects/network_incident_agent` (moved 2026-11-14). Kee
 Milan traffic replay + fault injector → **Kafka** (`telemetry.raw`) → **Spark Structured Streaming** (windowed features + promoted detector) → Kafka `alarms` → **correlator** (topology rules + graph ranking) → incident + root node → **XGBoost** classifier → **PostgreSQL** → **Grafana** (KPIs, health), **Streamlit** console (human approve/correct/close), **ops agent** (Groq API, read-only tools). **MLflow** tracks every model run, holds the registry, and runs the promotion gate. Everything starts with `docker compose up`. Full diagram and component table: `specs/00-overview.md`.
 
 ## Status and commands
-Milestone 1 in progress (started 2026-11-19). Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
+Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 next, not planned yet. Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
 
 | Task | Command |
 |---|---|

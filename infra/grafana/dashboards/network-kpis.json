@@ -1,5 +1,5 @@
 {
-  "description": "Per-cell telemetry from telemetry_raw. Traffic: real ([from BigDataChallenge contest](https://doi.org/10.7910/DVN/EGZHFV), ODbL 1.0). Topology and latency: synthetic/modeled. Not a real network.",
+  "description": "Per-cell telemetry from telemetry_raw. Traffic: real ([from BigDataChallenge contest](http://www.telecomitalia.com/tit/en/bigdatachallenge.html); [ODI node Trento](http://theodi.fbk.eu/); [dataset](https://doi.org/10.7910/DVN/EGZHFV), ODbL 1.0). Topology and latency: synthetic/modeled. Not a real network.",
   "editable": false,
   "graphTooltip": 1,
   "panels": [
@@ -100,7 +100,7 @@
       },
       "id": 3,
       "options": {
-        "content": "Traffic: real ([from BigDataChallenge contest](https://doi.org/10.7910/DVN/EGZHFV), ODbL 1.0). Topology and latency: synthetic/modeled. Not a real network.",
+        "content": "Traffic: real ([from BigDataChallenge contest](http://www.telecomitalia.com/tit/en/bigdatachallenge.html); [ODI node Trento](http://theodi.fbk.eu/); [dataset](https://doi.org/10.7910/DVN/EGZHFV), ODbL 1.0). Topology and latency: synthetic/modeled. Not a real network.",
         "mode": "markdown"
       },
       "title": "",

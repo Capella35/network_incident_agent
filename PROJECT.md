@@ -138,6 +138,7 @@ Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a 
 | 2026-11-19 | Tooling: uv + `uv.lock` pins, ruff, mypy strict, pytest, pre-commit (gitleaks), GitHub Actions CI, Claude Code deny rules. |
 | 2026-11-22 | **Numbered `specs/` folder** (`00-overview` … `09-evals` + `milestones/`): one spec per product behavior, read in order. `docs/` folded in (architecture → 00, domain model → 01, data sources + telemetry message → 02, incident record → 04, guardrails → 08); Definition of done moved to `00-overview.md`; `evals/eval-plan.md` → `09-evals.md`; new 03, 05, 06, 07 assembled from this charter and the README. Supersedes the 2026-11-14 `docs/milestones/` entry. |
 | 2026-11-22 | `HANDOFF.md` moved to `specs/HANDOFF.md` (user's choice), next to the milestone plans it tracks. Still read first in every session and updated last. |
+| 2026-11-22 | **Milestone 1 done:** replay → Kafka → Postgres → Grafana, reproducible (`make replay-check` → MATCH on training week 1); all M1 guardrails pass; ODbL attribution links applied as the publisher words them. Details in `DECISIONS.md` and `BUILD_LOG.md`. |
 
 ## Still open
 

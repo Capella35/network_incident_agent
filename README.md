@@ -2,7 +2,9 @@
 
 **Turns a cellular network's alarm storm into one incident with a root cause, a label, and an AI ops assistant that explains it with evidence, while a human stays in charge.**
 
-> Status: design. Nothing is built yet. Commands and results below describe the target, not working code. The project charter (goals, decisions, milestones) is in [`PROJECT.md`](PROJECT.md). Specs, read in order: [`specs/00-overview.md`](specs/00-overview.md).
+> Status (2026-11-22): **Milestone 1 of 6 done**: real Milan traffic is replayed into Kafka, stored in Postgres effectively once, shown in Grafana, and a replay is proven reproducible. Detection, correlation, classification, the console, and the ops agent are designed but **not built yet**; sections below marked *(target)* describe them. The project charter (goals, decisions, milestones) is in [`PROJECT.md`](PROJECT.md). Specs, read in order: [`specs/00-overview.md`](specs/00-overview.md).
+>
+> Traffic data [from BigDataChallenge contest](http://www.telecomitalia.com/tit/en/bigdatachallenge.html) ([ODI node Trento](http://theodi.fbk.eu/); [dataset](https://doi.org/10.7910/DVN/EGZHFV)), ODbL 1.0. Topology, derived KPIs, and faults are synthetic or modeled.
 
 ---
 
@@ -117,19 +119,36 @@ It uses read-only, typed tools built on the domain model (`specs/01-domain-model
 
 *To be filled in after Milestone 6. Every number will link to its MLflow run.*
 
-## Quickstart (target)
+## Quickstart (works today, Milestone 1)
+
+Needs Docker Desktop (~5 GB memory), [`uv`](https://docs.astral.sh/uv/), and Python 3.11.
 
 ```bash
-cp .env.example .env              # add LLM_API_KEY only if you want the agent
-# first: download the Milan files in your browser into data/raw/ (see specs/02-telemetry.md)
-make data                         # verify MD5s, filter to the cell subset, build topology
-docker compose up                 # Kafka, Spark, Postgres, MLflow, Grafana, Streamlit
+make setup                        # .venv from uv.lock + git hooks (gitleaks, ruff)
+cp .env.example .env              # then set every password (12+ chars); the stack refuses placeholders
+# download the Milan daily files in your browser into data/raw/ (guestbook form; see specs/02-telemetry.md)
+make data                         # verify published MD5s, filter to the 144-cell subset, build the SYNTHETIC topology
+make calibrate                    # fit MODELED cell capacity on the processed training days
+make up                           # Kafka, Postgres, MLflow, Grafana on 127.0.0.1 (Spark: make spark-smoke)
+make db-topology                  # load the topology into Postgres
+make replay ARGS="--start 2013-11-04 --speed 10"   # one data day ≈ 2.4 min into Kafka telemetry.raw
+make sink ARGS="--idle-exit 10"   # Kafka → Postgres telemetry_raw (run alongside, or after)
+make replay-check ARGS="--start 2013-11-04"        # proof: two replays give identical Kafka order and rows
+make check                        # lint, mypy strict, unit tests (what CI runs)
+make test-integration             # tests against the running stack
+```
+
+URLs (local only): Grafana `http://127.0.0.1:3000` (user `admin`; folder *Network Incident Agent*), MLflow `http://127.0.0.1:5001`, Postgres `127.0.0.1:5433`, Kafka `127.0.0.1:9092`.
+
+## Quickstart (target, after Milestone 6)
+
+```bash
 make train                        # tune detectors + classifier, register best in MLflow
 make replay                       # stream the test weeks with injected faults
 make evaluate                     # score against ground truth, write results
 ```
 
-Planned URLs: Streamlit console `localhost:8501`, Grafana `localhost:3000`, MLflow `127.0.0.1:5001`.
+Planned: Streamlit console `127.0.0.1:8501`.
 
 ## Repo layout (target)
 

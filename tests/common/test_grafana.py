@@ -66,6 +66,9 @@ def test_footer_attribution_and_synthetic_label() -> None:
     assert footer["type"] == "text"
     text = footer["options"]["content"]
     assert "from BigDataChallenge contest" in text and "ODbL" in text  # P3
+    # the link text points at the challenge page, and the ODI Trento page is linked too
+    assert f"[from BigDataChallenge contest]({grafana.BIGDATACHALLENGE_URL})" in text
+    assert f"({grafana.ODI_TRENTO_URL})" in text
     assert "synthetic/modeled" in text
 
 

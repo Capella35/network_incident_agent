@@ -20,6 +20,42 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-22 — Milestone 1, step 11: close-out — **Milestone 1 done**
+
+**What was built:**
+- P3 attribution, exactly as the publisher requires (Harvard Dataverse terms of use, read from the public dataset metadata API 2026-11-22): "from BigDataChallenge contest" → `http://www.telecomitalia.com/tit/en/bigdatachallenge.html`, plus the ODI node Trento homepage `http://theodi.fbk.eu/`, with the dataset DOI. Added to `README.md` and the Grafana footer (`src/common/grafana.py`, regenerated); wording recorded in `specs/02-telemetry.md`.
+- `README.md`: status line (Milestone 1 of 6 done; the rest designed, not built) and a quickstart of the commands that work today, separated from the target ones.
+- Checked: the decisions Step 11 lists (subset, Python 3.11, 6 partitions, KPI model) are already in `DECISIONS.md` (2026-11-19 / 2026-11-20); `specs/02-telemetry.md` already shows the subset and the confirmed time split.
+
+**Guardrail checklist (Milestone 1):**
+
+| # | Result | Evidence (2026-11-22) |
+|---|---|---|
+| P3 | **pass** | Attribution links in README and dashboard footer, as the terms of use word them; no raw or derived data published (only code and the checksum manifest). The write-up and video credits are due at M6. |
+| P4 | **pass** | `git ls-files data` → `README.md`, `manifest-template.md`, `manifest.json` only; no data file anywhere in git history; `check-added-large-files` (1 MB) in pre-commit. |
+| P5 | **pass** | Milan data is aggregated per grid square; `milan.py` sums away the only finer field (country code); nothing per-person is added or joined. |
+| S1 | **pass** | All 5 published ports bound to `127.0.0.1` (Kafka 9092, Postgres 5433, MLflow 5001, Grafana 3000, Spark UI 4040); MLflow's `--host=0.0.0.0` is inside its container only. 4 ports closed on the LAN address from the Mac; Grafana unreachable from a phone. |
+| S2 | **pass** | `preflight.sh` refuses placeholder or short passwords (stack would not start); Grafana anonymous access off (401); app roles and the Grafana data source take passwords from the environment, never from files. |
+| S3 | **pass** | gitleaks pre-commit hook installed and run on every commit today ("no leaks found"); CI gitleaks job green on the last pushed commit. Steps 7–11 are not pushed yet, so CI has not run on them. |
+| S5 | **pass** (note) | Python deps pinned in `uv.lock`; all 7 image tags pinned (no `latest`). Note: GitHub Actions use major tags (`checkout@v4`, `setup-uv@v5`), not commit SHAs, and run on deprecated Node 20. |
+| S6 | **pass** | Milan files downloaded manually and only parsed as text after MD5 checks against the published list; no `subprocess`, `eval`/`exec`, archive extraction, or `pickle` anywhere in `src/`. |
+| R1 | **pass** | Every container has a memory limit (stack ~2.9 GiB, +1.5 GiB Spark, of Docker's ~5.3 GiB); actual use ~1.4 GiB; 0 restarts and cgroup `oom_kill` 0 on all four services after the MLflow (Step 6) and Grafana (Step 10) fixes. |
+| R2 | **pass** | `telemetry.raw` 7 d / 256 MiB per partition, `telemetry.dlq` 7 d / 64 MiB; Kafka data 73 MB on disk after ~0.8 M messages today (the volume's 1.3 GB "size" is sparse pre-allocated index files). |
+| R5 | **pass** | 144-square subset (12 × 12 around the Duomo); full stack + a 7-day double replay ran within the laptop's limits. |
+
+**Tests run and results:**
+- `make check`: 267 passed, 89% coverage. `make test-integration`: 24 passed. Grafana serves the new footer (provisioned file contains the ODI Trento link).
+
+**Milestone 1 Definition of done:** met in Step 10 (`make replay-check` on training week 1 → MATCH).
+
+**Open items carried to Milestone 2:**
+- Push Steps 7–11 and let CI run on them.
+- Data: download the remaining training weeks 2–4 (2013-11-11 → 12-01) and the validation weeks (12-02 → 12-15, needed for Optuna tuning), then `make data` + `make calibrate`.
+- A cleanup path for check/demo rows in `telemetry_raw` (the writer role cannot delete, by design).
+- Pin GitHub Actions to commit SHAs and move off Node 20.
+- The guard hook's heredoc false alarm on `.env` text (user-only fix).
+- Grafana memory headroom (~120 MiB) as dashboards grow.
+
 ## 2026-11-22 — Milestone 1, step 10: reproducibility check (Definition of done)
 
 **What was built:**
