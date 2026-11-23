@@ -62,13 +62,14 @@ The telemetry schema (`specs/02-telemetry.md`) carries `latency_ms` and `drop_ra
 - **Tests:** deterministic for a fixed seed; monotonic in load; values within catalog ranges.
 - **Done when:** values follow the daily pattern of real load; labeled **modeled** in the code docstring and docs.
 
-### Step 6 — Docker Compose stack (~2 h)
+### Step 6 — Docker Compose stack (~2 h) — *done 2026-11-22*
 - `infra/docker-compose.yml`: Kafka (KRaft, no ZooKeeper), Postgres, Grafana, MLflow; Spark (single container) under the `spark` Compose profile, off by default — smoke check only this milestone. Docker Desktop capped at ~5 GB.
   - **All ports bound to `127.0.0.1`** (S1). **Pinned image tags**, no `latest` (S5). **Memory limit per container** sized from Step 0 (R1).
   - Passwords from `.env`; a startup check fails if any equals the `.env.example` placeholder; Grafana anonymous access off (S2).
 - Kafka topics created by an init container: `telemetry.raw` (key `(cell_id, interval_start)`, 6 partitions by default) and `telemetry.dlq`, both with bounded `retention.ms` / `retention.bytes` (R2).
 - `infra/db/001_init.sql`: `telemetry_raw` (PK `(replay_run_id, cell_id, interval_start)`), `topology_nodes`, `topology_edges`; DB users: `pipeline_writer` and `readonly` (S4 groundwork).
-- **Done when:** `docker compose -f infra/docker-compose.yml up -d` starts all services healthy; `nc -z <laptop LAN IP> 5432` from another device fails (S1 check); `docker stats` within limits.
+- **Done when:** `docker compose -f infra/docker-compose.yml up -d` starts all services healthy; `nc -z <laptop LAN IP> 5433` from another device fails (S1 check); `docker stats` within limits.
+- **Verified 2026-11-22:** all services healthy (one-shot `preflight` / `kafka-init` exit 0, which `up --wait` accepts); ports 5433/3000/5001/9092 closed on the LAN address from the Mac, and Grafana unreachable from a phone on the same Wi-Fi; ~1.3 GiB in total, every container under its limit with 0 restarts (`tests/integration/test_stack_health.py`). MLflow server jobs turned off to fit its 768m limit (`DECISIONS.md` 2026-11-22).
 
 ### Step 7 — Replay producer → Kafka (~1.5 h)
 - `src/producer/replay.py`: reads processed parquet for a date range, joins topology + modeled KPIs, emits one message per (cell, interval) per `specs/02-telemetry.md`, with `schema_version` and `replay_run_id`.
@@ -111,4 +112,4 @@ Fault injection, detectors, `faults.yaml`, alarms, correlation, classifier, cons
 
 ## Status
 
-Started 2026-11-19. Steps 0–4 done: 2013-11-01 processed (4,842,625 rows → 20,736; reproducible); subset 144 squares; synthetic topology 1 core / 5 aggregation nodes / 48 sites / 144 cells. Step 5 done: calibrated on training week 1 (load_ratio p50 0.33 / p99 0.80). Next: Step 6 (Docker Compose).
+Started 2026-11-19. Steps 0–4 done: 2013-11-01 processed (4,842,625 rows → 20,736; reproducible); subset 144 squares; synthetic topology 1 core / 5 aggregation nodes / 48 sites / 144 cells. Step 5 done: calibrated on training week 1 (load_ratio p50 0.33 / p99 0.80). Step 6 done 2026-11-22: local stack (Kafka, Postgres, MLflow, Grafana; Spark profile) healthy and local-only; topology loaded into Postgres. Next: Step 7 (replay producer → Kafka).

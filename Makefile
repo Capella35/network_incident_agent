@@ -1,7 +1,12 @@
-.PHONY: help setup lint format typecheck test check data topology calibrate clean
+.PHONY: help setup lint format typecheck test check data topology calibrate clean \
+	env-check up down ps logs spark-smoke db-topology test-integration
+
+# Local stack. .env is read by Compose and sourced for Python; its values are never printed.
+COMPOSE := docker compose --env-file .env -f infra/docker-compose.yml
+LOAD_ENV := set -a; . ./.env; set +a;
 
 help:  ## List targets
-	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*##' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-17s %s\n", $$1, $$2}'
 
 setup:  ## Create .venv from uv.lock and install the git hooks
 	uv sync --frozen
@@ -33,6 +38,30 @@ topology:  ## Rebuild only the SYNTHETIC topology from data/processed/subset.jso
 
 calibrate:  ## Fit MODELED cell capacity on processed training days -> kpi_calibration.json
 	uv run python -m producer.kpi_model
+
+env-check:
+	@test -f .env || { echo "No .env: cp .env.example .env, then set every password (12+ chars)"; exit 1; }
+
+up: env-check  ## Start the local stack (Kafka, Postgres, Grafana, MLflow) and wait until healthy
+	$(COMPOSE) up -d --wait
+
+down:  ## Stop the stack (volumes kept)
+	$(COMPOSE) down
+
+ps:  ## Service status
+	$(COMPOSE) ps -a
+
+logs:  ## Last 50 log lines per service
+	$(COMPOSE) logs --tail=50
+
+spark-smoke: env-check  ## One-off Spark local-mode job (Spark profile; off by default)
+	$(COMPOSE) --profile spark run --rm spark
+
+db-topology: env-check  ## Load the SYNTHETIC topology CSVs into Postgres
+	@$(LOAD_ENV) uv run python -m producer.topology_db
+
+test-integration: env-check  ## Integration tests against the running stack (not in CI)
+	@$(LOAD_ENV) uv run pytest -m integration -p no:cacheprovider
 
 clean:  ## Remove local caches (data/ is never touched)
 	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov

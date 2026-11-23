@@ -129,7 +129,7 @@ make replay                       # stream the test weeks with injected faults
 make evaluate                     # score against ground truth, write results
 ```
 
-Planned URLs: Streamlit console `localhost:8501`, Grafana `localhost:3000`, MLflow `localhost:5000`.
+Planned URLs: Streamlit console `localhost:8501`, Grafana `localhost:3000`, MLflow `127.0.0.1:5001`.
 
 ## Repo layout (target)
 

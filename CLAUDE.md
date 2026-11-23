@@ -23,8 +23,14 @@ Milestone 1 in progress (started 2026-11-19). Python 3.11, managed with `uv`; ex
 | Verify + process Milan files in `data/raw/`, then build the topology | `make data` (`ARGS="--date 2013-11-01 --delete-raw"`, `--force`) |
 | Rebuild only the synthetic topology | `make topology` |
 | Fit modeled cell capacity on training days | `make calibrate` |
+| Start / stop the local stack (Kafka, Postgres, MLflow, Grafana); needs `.env` | `make up` / `make down` (`make ps`, `make logs`) |
+| Load the synthetic topology into Postgres | `make db-topology` |
+| Integration tests against the running stack (not in CI) | `make test-integration` |
+| One-off Spark smoke job (Spark profile) | `make spark-smoke` |
 
-Planned, not built yet: `make replay`, `docker compose -f infra/docker-compose.yml up`. Don't claim they work until they exist.
+Host ports, all on `127.0.0.1`: Postgres 5433 (5432 is often taken by a local Postgres), MLflow 5001, Grafana 3000, Kafka 9092.
+
+Planned, not built yet: `make replay`. Don't claim it works until it exists.
 
 **Laptop limit:** 8 GB RAM total. Keep containers memory-capped; Spark runs only under its Compose profile.
 

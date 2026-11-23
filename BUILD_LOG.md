@@ -20,6 +20,32 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-22 — Milestone 1, step 6: Docker Compose stack (+ repo tooling)
+
+**What was built:**
+- Repo tooling (commit `b52962a`, pushed, CI green): Claude Code guard hook `.claude/hooks/guard.py` with 101 tests; skills `milestone-step`, `new-package`; agent `eval-failure-reviewer`; docs reorganized into numbered `specs/00…09` + `specs/milestones/`; handoff moved to `specs/HANDOFF.md`; `evals/cases/` added.
+- Step 6 run for the first time: `infra/docker-compose.yml` (Kafka 4.3.2 KRaft, Postgres 18.7, MLflow 3.17.2, Grafana 13.2.6; Spark 4.2.1 under the `spark` profile), preflight password check, DB roles + schema, Kafka topic init, `src/common/db.py`, `src/producer/topology_db.py`, make targets `up` / `down` / `ps` / `logs` / `db-topology` / `test-integration` / `spark-smoke`.
+- New `tests/integration/test_stack_health.py`: fails on any restart or OOM kill, and on a missing memory limit.
+
+**Tests run and results:**
+- First `make up` failed: the user's `.env` (copied from an older `.env.example`) still had `POSTGRES_PORT=5432`, held by a local Postgres (PID 1373). User set 5433; then all services healthy; `preflight` and `kafka-init` exit 0 and `up --wait` accepts them.
+- **MLflow crash loop found:** 8 restarts in ~5 min, exit 137 (cgroup OOM) every ~50 s, pinned at 767.9 / 768 MiB and ~350% CPU, while its health check passed. Cause: a job runner + 7 huey worker processes started by default. Fixed with `MLFLOW_SERVER_ENABLE_JOB_EXECUTION=false`: steady 408 MiB, idle CPU, 0 restarts over 3 min.
+- `make db-topology`: 198 nodes (1 core + 5 agg + 48 sites + 144 cells), 197 edges, SYNTHETIC.
+- `make test-integration`: 11 passed (DB roles: writer can't delete telemetry or create tables, readonly can't write; stack stability + memory limits).
+- `docker stats`: postgres 91 / 512 MiB, mlflow 417 / 768, grafana 229 / 384, kafka 578 / 1024 (~1.3 GiB total of Docker's 5.3 GiB).
+- Topics (R2): `telemetry.raw` 6 partitions, retention 7 d / 256 MB; `telemetry.dlq` 1 partition, 7 d / 64 MB.
+- S1: 5433 / 3000 / 5001 / 9092 closed on the LAN address `192.168.254.159` from the Mac (open on 127.0.0.1); Grafana unreachable from a phone on the same Wi-Fi. S2: preflight passed; Grafana returns 401 to anonymous requests. S5: all tags pinned.
+- `make spark-smoke`: Pi ≈ 3.133, exit 0.
+- `make check`: 183 passed, 95% coverage.
+
+**Decisions made:** (also in DECISIONS.md)
+- Postgres host port 5433, MLflow 5001; MLflow server jobs off.
+
+**Open items:**
+- The guard hook flags heredoc text that mentions `.env` (it reads heredoc lines as commands), including commit messages. Workaround: write the text with the Edit/Write tools or `git commit -F <file>`. A fix needs the user, since Claude can't edit `.claude/hooks/`.
+- `make up` reports "healthy" even when a service is crash-looping; run `make test-integration` about a minute after `make up` to catch that.
+- `.env` drifted from `.env.example` once already; a preflight check for missing keys could catch that.
+
 ## 2026-11-20 — Milestone 1, step 5 (calibration): training week 1
 
 **What was built:**
