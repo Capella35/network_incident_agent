@@ -52,7 +52,7 @@ class TelemetryMessage(BaseModel):
     internet: _Activity
     data_gap: bool
     load_ratio: _Modeled
-    latency_ms: _Modeled
+    latency_ms: Annotated[float | None, Field(default=None, gt=0.0, allow_inf_nan=False)]
     drop_rate: Annotated[float | None, Field(default=None, ge=0.0, le=1.0, allow_inf_nan=False)]
 
     @field_validator("cell_id")

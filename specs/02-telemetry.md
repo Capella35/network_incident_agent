@@ -82,6 +82,8 @@ Milan-derived fields verified 2026-11-14 against `sms-call-internet-mi-2013-11-0
 
 **Validation:** non-negative, finite traffic; IDs match the domain patterns; `interval_start` is UTC and on the 10-minute grid; `data_gap` ⇔ modeled values null (and traffic 0); `drop_rate` ≤ 1. Rows that fail go to `telemetry.dlq` as `{schema_version, replay_run_id, reason, row}`, never silently dropped.
 
+**Into Postgres** (`src/producer/sink.py`, consumer group `telemetry-sink`): every message is validated again; valid rows are upserted into `telemetry_raw` on `(replay_run_id, cell_id, interval_start)`; failures go to `telemetry.dlq` as `{schema_version, stage: "sink", reason, source, value}`; Kafka offsets are committed only after the Postgres commit and the DLQ acknowledgement. Re-delivery therefore overwrites, never duplicates (effectively once). `latency_ms` must be > 0, matching the table's CHECK.
+
 | Field | Type | Meaning |
 |---|---|---|
 | `cell_id` | string | Cell identifier, `CELL-<site>-<sector>`, mapped from a Milan grid square by the topology generator |

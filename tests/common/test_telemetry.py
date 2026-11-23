@@ -71,6 +71,7 @@ def test_gap_row_is_valid_with_null_modeled_values() -> None:
         ({"internet": -1.0}, "internet"),
         ({"internet": math.nan}, "internet"),
         ({"latency_ms": math.inf}, "latency_ms"),
+        ({"latency_ms": 0.0}, "latency_ms"),  # telemetry_raw: CHECK (latency_ms > 0)
         ({"drop_rate": 1.5}, "drop_rate"),
         ({"cell_id": "SITE-1"}, "cell_id"),
         ({"site_id": "CELL-1-1"}, "site_id"),

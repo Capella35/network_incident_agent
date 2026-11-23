@@ -20,6 +20,25 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-22 — Milestone 1, step 8: Postgres sink
+
+**What was built:**
+- `src/producer/sink.py` + `make sink`: consumes `telemetry.raw` in batches (≤ 500); validates each message with `common.telemetry`; upserts valid rows into `telemetry_raw` in one transaction as `pipeline_writer`; invalid messages → `telemetry.dlq` with reason and source position; Kafka offsets committed only after the Postgres commit and the DLQ ack. Postgres data errors fall back to row-by-row so only the bad row is dead-lettered. Ctrl-C / SIGTERM finish the current batch; `--idle-exit N` stops when drained.
+- Schema: `latency_ms` now must be > 0 (matches the table's CHECK; found while writing the sink).
+
+**Tests run and results:**
+- Unit (20): DB commit before offset commit; counts; DLQ contents and source; Postgres-refused rows dead-lettered and the stream moves on; unacknowledged DLQ blocks the offset commit; transport errors not stored; re-delivery idempotent; idle exit, stop request, consumer always closed. `make check`: 243 passed, 92% coverage (`sink.py` 75% in unit tests; the Postgres writer and live `main` are covered by integration tests and the real run).
+- Integration (`tests/integration/test_sink_stack.py`, throwaway topics, all writes rolled back): 24 messages each delivered twice + 2 bad → 24 rows, 2 dead letters; row-by-row fallback isolates a row Postgres refuses (23514). `make test-integration`: 14 passed.
+- Real run: `make sink ARGS="--idle-exit 10"` on the 2013-11-04 replay → 20,736 consumed, 20,736 written, 42 batches, 0 dead-lettered, ~5 s of work. `telemetry_raw`: 20,736 rows, 144 cells × 144 intervals. Totals vs the parquet, exact: sms_in 872,517.048, sms_out 498,817.592, call_in 570,114.819, call_out 675,271.004, internet 11,519,990.328, 0 gaps; sample row (square 5061, 09:00 UTC) identical.
+- Effectively once: second sink run consumed 0; same day replayed again with the same run ID → 41,472 deliveries in total, still 20,736 rows (`ingested_at` refreshed); lag 0 on all 6 partitions; DLQ empty.
+
+**Decisions made:** (also in DECISIONS.md)
+- Offset-commit order, batch size, row-by-row fallback, `latency_ms > 0`.
+
+**Open items:**
+- The sink runs in the foreground (`make sink`); it becomes a Compose service only if a later step needs it always on.
+- DLQ records can be duplicated if the sink crashes between the DLQ write and the offset commit (at-least-once DLQ); acceptable for a review queue.
+
 ## 2026-11-22 — Milestone 1, step 7: replay producer → Kafka
 
 **What was built:**
