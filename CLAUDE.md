@@ -30,10 +30,11 @@ Milestone 1 in progress (started 2026-11-19). Python 3.11, managed with `uv`; ex
 | Replay processed days into Kafka `telemetry.raw` (stack running) | `make replay ARGS="--start 2013-11-04 [--end …] [--speed 0] [--run-id …]"` |
 | Kafka `telemetry.raw` → Postgres `telemetry_raw` (runs until Ctrl-C) | `make sink` (`ARGS="--idle-exit 10"` to stop when drained) |
 | Regenerate Grafana dashboards from `kpis.yaml` (never edit the JSON by hand) | `make dashboards` |
+| Milestone 1 Definition of done: replay twice, compare Kafka key order + Postgres rows | `make replay-check ARGS="--start 2013-11-04 --end 2013-11-10"` |
 
 Host ports, all on `127.0.0.1`: Postgres 5433 (5432 is often taken by a local Postgres), MLflow 5001, Grafana 3000 (user `admin`), Kafka 9092.
 
-Planned, not built yet: `make replay-check` (Step 10). Don't claim it works until it exists.
+Planned, not built yet: anything from Milestone 2 on (`make train`, `make evaluate`, fault injection). Don't claim it works until it exists.
 
 **Laptop limit:** 8 GB RAM total. Keep containers memory-capped; Spark runs only under its Compose profile.
 

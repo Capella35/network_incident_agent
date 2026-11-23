@@ -12,7 +12,7 @@
 #   R2  Kafka topics have bounded retention (see kafka/create-topics.sh)
 #
 # Memory budget (default stack): kafka 1 GiB + postgres 512 MiB + mlflow 768 MiB
-# + grafana 384 MiB = ~2.6 GiB. Spark (profile) adds 1.5 GiB.
+# + grafana 640 MiB = ~2.9 GiB. Spark (profile) adds 1.5 GiB (~4.4 GiB of Docker's ~5.3 GiB).
 #
 # Host ports come from .env: POSTGRES_PORT (5433), MLFLOW_PORT (5001), GRAFANA_PORT (3000).
 # Inside the Compose network the services keep their standard ports (postgres:5432, mlflow:5000).
@@ -181,6 +181,14 @@ services:
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
       GF_NEWS_NEWS_FEED_ENABLED: "false"
+      # Go runtime: collect garbage before the container limit, not after (2026-11-22: at 384m
+      # with no GOMEMLIMIT, Grafana was OOM-killed 3 times while the dashboard was in use).
+      GOMEMLIMIT: 480MiB
+      # Only the PostgreSQL data source is used. Each other backend plugin ran as its own
+      # process (~25-35 MB each, ~380 MB in total), and the preinstalled apps run background work.
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_DISABLE_PLUGINS: >-
+        elasticsearch,influxdb,prometheus,stackdriver,zipkin,jaeger,loki,mssql,mysql,opentsdb,tempo,grafana-pyroscope-datasource,grafana-advisor-app,grafana-exploretraces-app,grafana-lokiexplore-app,grafana-metricsdrilldown-app,grafana-pyroscope-app
       # Data source for step 9 (provisioned as code; readonly DB user).
       READONLY_PASSWORD: ${READONLY_PASSWORD:?set READONLY_PASSWORD in .env}
       POSTGRES_DB: ${POSTGRES_DB:-netops}
@@ -199,7 +207,7 @@ services:
       start_period: 20s
     deploy:
       resources:
-        limits: { memory: 384m }
+        limits: { memory: 640m }
 
   # Off by default. Milestone 1 only smoke-checks it (make spark-smoke).
   spark:

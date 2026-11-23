@@ -15,4 +15,6 @@ Local stack for milestone 1, step 6. Start it with `make up` (needs `.env`; see 
 
 MLflow runs with server-side jobs off (`MLFLOW_SERVER_ENABLE_JOB_EXECUTION=false`): they need ~1.1 GB and were OOM-killed in a loop under the 768m limit. `make test-integration` includes `tests/integration/test_stack_health.py`, which fails on any restart or OOM kill, because a health check can pass between crashes.
 
+Grafana runs with only the PostgreSQL data source enabled (`GF_PLUGINS_DISABLE_PLUGINS`, no preinstalled apps) and `GOMEMLIMIT=480MiB` under a 640m limit: at 384m with every bundled plugin running as its own process it was OOM-killed three times while the dashboard was in use. `test_stack_health.py` also reads each container's cgroup `memory.events`, because Docker's `OOMKilled` flag missed both incidents.
+
 Grafana (`http://127.0.0.1:3000`, user `admin`): folder *Network Incident Agent* → *Network KPIs (milestone 1)*. The data is from 2013, so the dashboard opens on training week 1; pick the replay run, site, and cells at the top. Panel queries run in read-only transactions as the `readonly` role.

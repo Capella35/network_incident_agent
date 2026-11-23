@@ -46,6 +46,26 @@ def test_service_running_without_restarts(service: str) -> None:
 
 
 @pytest.mark.parametrize("service", LONG_RUNNING)
+def test_no_process_oom_killed(service: str) -> None:
+    """The cgroup's own counter: also catches a killed child (e.g. a Grafana plugin) that does
+    not restart the container. Docker's OOMKilled flag stayed false in both 2026-11-22 incidents.
+    """
+    docker = shutil.which("docker")
+    if docker is None:
+        pytest.skip("docker CLI not found")
+    out = subprocess.run(  # noqa: S603 - fixed argv, no shell, no user input
+        [docker, "exec", f"{PROJECT}-{service}-1", "cat", "/sys/fs/cgroup/memory.events"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if out.returncode != 0:
+        pytest.skip(f"{service}: cgroup v2 memory.events not readable")
+    events = dict(line.split() for line in out.stdout.splitlines() if line.strip())
+    assert int(events.get("oom_kill", "0")) == 0, f"{service}: processes OOM-killed: {events}"
+
+
+@pytest.mark.parametrize("service", LONG_RUNNING)
 def test_service_has_memory_limit(service: str) -> None:
     host = _inspect(service)["HostConfig"]
     assert isinstance(host, dict)

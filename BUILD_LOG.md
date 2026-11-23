@@ -20,6 +20,26 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-22 — Milestone 1, step 10: reproducibility check (Definition of done)
+
+**What was built:**
+- `src/producer/replay_check.py` + `make replay-check`: replays the same days twice (`replay-check-<day>-<tag>-a` / `-b`); records each partition's end offset before and after each run and reads back exactly that range; compares per-partition key sequences and payload SHA-256 (run ID blanked); drains both runs with the normal sink; compares row counts and an ordered MD5 over every `telemetry_raw` column but `replay_run_id` / `ingested_at`, as `readonly`. Exit 0 only on MATCH. Refuses test-week days (Rule 7).
+- Grafana memory fix (found while testing): 640m limit, `GOMEMLIMIT=480MiB`, unused plugins disabled. `test_stack_health.py` now also checks the cgroup `oom_kill` counter.
+
+**Tests run and results:**
+- **Definition of done:** `make replay-check ARGS="--start 2013-11-04 --end 2013-11-10"`: sent 145,152 | 145,152; read back 145,152 | 145,152; partitions 0–5 (24,085–24,403 keys each) with identical key sequences and payload digests; `telemetry_raw` 145,152 | 145,152 rows, MD5 `8530ca4a789314acefdce32217131f0a` | same. **RESULT: MATCH.** Sink: 290,304 consumed and written, 0 dead-lettered. ~2.5 min.
+- Unit (14): read-back window (ignores messages before/after), empty range, timeout, Kafka error; payload normalization; foreign messages ignored; mismatch detection for reordered keys, changed payload, row count, digest, short read-back; digest SQL covers every column but the run ID. Integration (2): two runs read back identically from a throwaway topic; DB digest equal for equal rows inserted in a different order, different after a 1e-9 change (rolled back).
+- Fixed during testing: offsets on a just-created topic fail with NOT_LEADER (not flagged retriable by the client); `end_offset` now retries for up to ~10 s.
+- **Grafana incident:** `test_stack_health` reported 2, then 3 restarts. Docker events: `oom` → `die exit=137` (at 04:21, 04:32, 04:46 UTC, while the dashboard was in use); `OOMKilled` flag false. Cause: 384m limit; 13 unused data-source plugins + 5 preinstalled apps running (~380 MB of plugin processes); the main server ~580 MB RSS. After the fix: 2 processes, 390 MiB / 1.5% CPU at rest; three back-to-back integration runs: cgroup peak 631 MiB (anon 466, file cache 152), `oom_kill` 0, restarts 0.
+- `make check`: 267 passed, 89% coverage (`replay_check.py` orchestration runs only against the live stack). `make test-integration`: 24 passed.
+
+**Decisions made:** (also in DECISIONS.md)
+- The replay-check design; Grafana memory settings and disabled plugins.
+
+**Open items:**
+- `telemetry_raw` now holds 2 × 145,152 replay-check rows plus the four earlier runs (~370k rows); fine for M1, but there is no cleanup path (the writer role cannot delete, by design). Decide in M2 whether test runs get a separate schema or an admin cleanup target.
+- Grafana's anon memory under load (~466 MiB) leaves ~120 MiB below the limit; keep an eye on it when more dashboards arrive (M2–M4).
+
 ## 2026-11-22 — Milestone 1, step 9: Grafana panel
 
 **What was built:**

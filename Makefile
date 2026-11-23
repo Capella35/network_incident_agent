@@ -1,5 +1,5 @@
 .PHONY: help setup lint format typecheck test check data topology calibrate clean \
-	env-check up down ps logs spark-smoke db-topology replay sink dashboards test-integration
+	env-check up down ps logs spark-smoke db-topology replay sink replay-check dashboards test-integration
 
 # Local stack. .env is read by Compose and sourced for Python; its values are never printed.
 COMPOSE := docker compose --env-file .env -f infra/docker-compose.yml
@@ -65,6 +65,9 @@ replay: env-check  ## Replay processed days into Kafka telemetry.raw (ARGS="--st
 
 sink: env-check  ## Kafka telemetry.raw -> Postgres telemetry_raw (ARGS="--idle-exit 10"; Ctrl-C stops)
 	@$(LOAD_ENV) uv run python -m producer.sink $(ARGS)
+
+replay-check: env-check  ## Milestone 1 Definition of done: replay twice, compare Kafka keys + DB rows (ARGS="--start 2013-11-04 --end 2013-11-10")
+	@$(LOAD_ENV) uv run python -m producer.replay_check $(ARGS)
 
 dashboards:  ## Regenerate Grafana dashboards from kpis.yaml -> infra/grafana/dashboards/
 	uv run python -m common.grafana
