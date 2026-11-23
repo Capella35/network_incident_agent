@@ -71,13 +71,15 @@ The telemetry schema (`specs/02-telemetry.md`) carries `latency_ms` and `drop_ra
 - **Done when:** `docker compose -f infra/docker-compose.yml up -d` starts all services healthy; `nc -z <laptop LAN IP> 5433` from another device fails (S1 check); `docker stats` within limits.
 - **Verified 2026-11-22:** all services healthy (one-shot `preflight` / `kafka-init` exit 0, which `up --wait` accepts); ports 5433/3000/5001/9092 closed on the LAN address from the Mac, and Grafana unreachable from a phone on the same Wi-Fi; ~1.3 GiB in total, every container under its limit with 0 restarts (`tests/integration/test_stack_health.py`). MLflow server jobs turned off to fit its 768m limit (`DECISIONS.md` 2026-11-22).
 
-### Step 7 — Replay producer → Kafka (~1.5 h)
+### Step 7 — Replay producer → Kafka (~1.5 h) — *done 2026-11-22*
 - `src/producer/replay.py`: reads processed parquet for a date range, joins topology + modeled KPIs, emits one message per (cell, interval) per `specs/02-telemetry.md`, with `schema_version` and `replay_run_id`.
 - **Deterministic order:** sort by `(interval_start, cell_id)` before sending; key = `cell_id|interval_start`; idempotent producer (`enable.idempotence=true`, `acks=all`). Since order is only guaranteed per partition, "same order" means: same per-partition sequence of keys.
 - Speed control: `--speed` (data minutes per wall second); `--max-rate` cap.
 - Malformed rows (schema validation fails) → `telemetry.dlq` with the reason.
 - Resolve the two **TODO** fields in `specs/02-telemetry.md` (`site_id` carried or joined; `schema_version`, `replay_run_id`) and update the schema doc.
 - **Tests:** message builder against the schema; ordering function; a malformed row goes to the DLQ path (Kafka mocked).
+- **Done when** *(added 2026-11-22; the plan had none)*: one real training day replayed gives 144 × 144 = 20,736 messages and 0 DLQ entries; read back, every key appears once and each partition holds its keys in source order.
+- **Verified 2026-11-22:** `make replay ARGS="--start 2013-11-04 --speed 0"` sent 20,736 in ~2 s (partitions 3,411–3,501), 0 dead-lettered, 0 failed. Read back and compared with keys recomputed from the parquet + topology: 0 duplicates, 0 missing, all 6 partitions in source order; `telemetry.dlq` empty. Message schema in `src/common/telemetry.py`; the three TODO fields settled in `specs/02-telemetry.md`. Integration test `tests/integration/test_replay_kafka.py` repeats the check in throwaway topics.
 
 ### Step 8 — Postgres sink (~1 h)
 - `src/producer/sink.py` (plain Python consumer; Spark takes over feature work in Milestone 2): consumes `telemetry.raw`, upserts into `telemetry_raw` in batches, commits Kafka offsets only after the DB commit (at-least-once + idempotent upsert ⇒ effectively once).
@@ -112,4 +114,4 @@ Fault injection, detectors, `faults.yaml`, alarms, correlation, classifier, cons
 
 ## Status
 
-Started 2026-11-19. Steps 0–4 done: 2013-11-01 processed (4,842,625 rows → 20,736; reproducible); subset 144 squares; synthetic topology 1 core / 5 aggregation nodes / 48 sites / 144 cells. Step 5 done: calibrated on training week 1 (load_ratio p50 0.33 / p99 0.80). Step 6 done 2026-11-22: local stack (Kafka, Postgres, MLflow, Grafana; Spark profile) healthy and local-only; topology loaded into Postgres. Next: Step 7 (replay producer → Kafka).
+Started 2026-11-19. Steps 0–4 done: 2013-11-01 processed (4,842,625 rows → 20,736; reproducible); subset 144 squares; synthetic topology 1 core / 5 aggregation nodes / 48 sites / 144 cells. Step 5 done: calibrated on training week 1 (load_ratio p50 0.33 / p99 0.80). Step 6 done 2026-11-22: local stack (Kafka, Postgres, MLflow, Grafana; Spark profile) healthy and local-only; topology loaded into Postgres. Step 7 done 2026-11-22: `make replay` sends processed days to `telemetry.raw` (one day = 20,736 messages, exact and in order). Next: Step 8 (Postgres sink).

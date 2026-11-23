@@ -1,5 +1,5 @@
 .PHONY: help setup lint format typecheck test check data topology calibrate clean \
-	env-check up down ps logs spark-smoke db-topology test-integration
+	env-check up down ps logs spark-smoke db-topology replay test-integration
 
 # Local stack. .env is read by Compose and sourced for Python; its values are never printed.
 COMPOSE := docker compose --env-file .env -f infra/docker-compose.yml
@@ -59,6 +59,9 @@ spark-smoke: env-check  ## One-off Spark local-mode job (Spark profile; off by d
 
 db-topology: env-check  ## Load the SYNTHETIC topology CSVs into Postgres
 	@$(LOAD_ENV) uv run python -m producer.topology_db
+
+replay: env-check  ## Replay processed days into Kafka telemetry.raw (ARGS="--start 2013-11-04 --speed 0")
+	@$(LOAD_ENV) uv run python -m producer.replay $(ARGS)
 
 test-integration: env-check  ## Integration tests against the running stack (not in CI)
 	@$(LOAD_ENV) uv run pytest -m integration -p no:cacheprovider

@@ -20,6 +20,27 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-22 — Milestone 1, step 7: replay producer → Kafka
+
+**What was built:**
+- `src/common/telemetry.py`: the `telemetry.raw` message (pydantic, JSON, `schema_version` 1), key `cell_id|interval_start`, topic names; validation (finite non-negative traffic, domain ID patterns, UTC 10-minute grid, gap ⇔ null modeled values); `check_against_domain()` ties field names to `kpis.yaml` and the Milan fields.
+- `src/producer/replay.py` + `make replay`: processed days + SYNTHETIC topology + MODELED KPIs → messages sorted by `(interval_start, cell_id)`; idempotent producer (`acks=all`, ≤ 5 in flight, murmur2); `--speed` / `--max-rate` pacing; invalid rows and unknown squares → `telemetry.dlq` with the reason; test-week days refused unless `--final-eval`.
+- `topology.load_cell_sites()`; new dependency `confluent-kafka` 2.16.2.
+- Spec: the three TODO message fields settled in `specs/02-telemetry.md`; Step 7 given a "Done when".
+
+**Tests run and results:**
+- Unit: 19 schema tests, 20 replay tests (order, site join, DLQ routes, pacing with a fake clock, buffer-full retry, delivery failures, determinism across run IDs, test-week refusal). `make check`: 222 passed, 94% coverage.
+- Integration (`tests/integration/test_replay_kafka.py`, throwaway topics): 120 messages + 1 reject through the real broker; every key once, each partition in replay order, reject in the DLQ. `make test-integration`: 12 passed.
+- Real run: `make replay ARGS="--start 2013-11-04 --speed 0 --run-id step7-check-2013-11-04"`: 20,736 sent in ~2 s, 0 dead-lettered, 0 failed; partitions 3,446 / 3,460 / 3,434 / 3,411 / 3,484 / 3,501.
+- Read back and compared with keys recomputed from the parquet + topology (independent of the replay code): 20,736 read, 0 duplicates, 0 missing, 0 unexpected, every partition in source order; `telemetry.dlq` empty.
+
+**Decisions made:** (also in DECISIONS.md)
+- `confluent-kafka`; JSON + pydantic, not Avro; `site_id` carried; key format and partitioner; replay refuses test weeks without `--final-eval`.
+
+**Open items:**
+- `telemetry.raw` now holds the 2013-11-04 check run (`replay_run_id` `step7-check-2013-11-04`; kept 7 days by retention). The Step 8 sink will consume it.
+- Pacing at the default `--speed 10` (one day ≈ 2.4 min) is unit-tested with a fake clock, not timed on the real broker.
+
 ## 2026-11-22 — Milestone 1, step 6: Docker Compose stack (+ repo tooling)
 
 **What was built:**

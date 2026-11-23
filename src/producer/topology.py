@@ -229,6 +229,15 @@ def load_cells(nodes_csv: Path) -> dict[int, str]:
         }
 
 
+def load_cell_sites(nodes_csv: Path) -> dict[str, str]:
+    """Map Cell node_id -> parent Site node_id from a written `topology_nodes.csv`."""
+    cell_type = load_domain().topology_types()[-1].name
+    with nodes_csv.open(newline="", encoding="utf-8") as fh:
+        return {
+            r["node_id"]: r["parent_id"] for r in csv.DictReader(fh) if r["node_type"] == cell_type
+        }
+
+
 def run(data_dir: Path, config_path: Path | None = None) -> Topology:
     grid_path = data_dir / "raw" / "milano-grid.geojson"
     subset_path = data_dir / "processed" / "subset.json"

@@ -27,10 +27,11 @@ Milestone 1 in progress (started 2026-11-19). Python 3.11, managed with `uv`; ex
 | Load the synthetic topology into Postgres | `make db-topology` |
 | Integration tests against the running stack (not in CI) | `make test-integration` |
 | One-off Spark smoke job (Spark profile) | `make spark-smoke` |
+| Replay processed days into Kafka `telemetry.raw` (stack running) | `make replay ARGS="--start 2013-11-04 [--end …] [--speed 0] [--run-id …]"` |
 
 Host ports, all on `127.0.0.1`: Postgres 5433 (5432 is often taken by a local Postgres), MLflow 5001, Grafana 3000, Kafka 9092.
 
-Planned, not built yet: `make replay`. Don't claim it works until it exists.
+Planned, not built yet: the Postgres sink (Step 8) and `make replay-check` (Step 10). Don't claim they work until they exist.
 
 **Laptop limit:** 8 GB RAM total. Keep containers memory-capped; Spark runs only under its Compose profile.
 

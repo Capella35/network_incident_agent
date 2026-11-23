@@ -74,16 +74,20 @@ A processing script then handles them **one day at a time**: check MD5 against t
 
 ## Telemetry message (`telemetry.raw`)
 
-Milan-derived fields verified 2026-11-14 against `sms-call-internet-mi-2013-11-01.txt`. One message = one cell (grid square) per 10-minute interval, summed over country codes. Fields still marked **TODO** were inferred.
+Milan-derived fields verified 2026-11-14 against `sms-call-internet-mi-2013-11-01.txt`. One message = one cell (grid square) per 10-minute interval, summed over country codes. All fields settled 2026-11-22 (milestone 1, step 7); code: `src/common/telemetry.py`, producer: `src/producer/replay.py`.
 
-**Kafka key:** `(cell_id, interval_start)`, which makes replays deterministic and idempotent. Malformed messages go to the dead-letter topic.
+**Encoding:** UTF-8 JSON, one object per message, fields as below; `interval_start` as ISO 8601 UTC (`2013-11-04T23:00:00Z`). JSON rather than Avro: no schema-registry container on an 8 GB laptop; the schema is enforced in code (pydantic) on both ends, and `schema_version` allows evolution.
+
+**Kafka key:** `cell_id|interval_start`, e.g. `CELL-12-2|2013-11-04T23:00:00Z`, which makes replays deterministic and idempotent. Sent in `(interval_start, cell_id)` order by an idempotent producer (`acks=all`, murmur2 partitioner), so a replay of the same days gives every partition of `telemetry.raw` (6 partitions) the same key sequence.
+
+**Validation:** non-negative, finite traffic; IDs match the domain patterns; `interval_start` is UTC and on the 10-minute grid; `data_gap` ⇔ modeled values null (and traffic 0); `drop_rate` ≤ 1. Rows that fail go to `telemetry.dlq` as `{schema_version, replay_run_id, reason, row}`, never silently dropped.
 
 | Field | Type | Meaning |
 |---|---|---|
 | `cell_id` | string | Cell identifier, `CELL-<site>-<sector>`, mapped from a Milan grid square by the topology generator |
 | `square_id` | int | Milan grid square (1–10000), from the grid's `cellId` |
 | `interval_start` | timestamp (UTC) | Start of the 10-minute interval (Milan `time_interval`, epoch ms UTC) |
-| `site_id` | string | TODO (inferred): parent site, from topology; may be joined later instead of carried in the message |
+| `site_id` | string | Parent Site of the cell, from the SYNTHETIC topology. Carried in the message (decided 2026-11-22) so the correlator and Spark need no join; `telemetry_raw` stores it too |
 | `sms_in` | float | Incoming SMS activity (scaled), summed over country codes; empty = 0 |
 | `sms_out` | float | Outgoing SMS activity (scaled), as above |
 | `call_in` | float | Incoming call activity (scaled), as above |
@@ -93,5 +97,5 @@ Milan-derived fields verified 2026-11-14 against `sms-call-internet-mi-2013-11-0
 | `load_ratio` | float, nullable | Modeled: load ÷ the cell's modeled capacity (training-week q99 × 1.25). Null when `data_gap` |
 | `latency_ms` | float, nullable | Modeled from load (queueing curve, seeded noise). Null when `data_gap` |
 | `drop_rate` | float, nullable | Modeled from load (logistic rise near saturation, seeded noise). Null when `data_gap` |
-| `schema_version` | int | TODO (inferred): schema version for evolution |
-| `replay_run_id` | string | TODO (inferred): which replay run produced this message |
+| `schema_version` | int | `1`. Bumped on any incompatible change; consumers reject versions they don't know |
+| `replay_run_id` | string | Which replay run produced this message (1–64 chars; a new UUID unless `--run-id` is given). Part of `telemetry_raw`'s primary key, so two replays of the same day never collide |

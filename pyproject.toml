@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11,<3.12"
 # Exact versions are pinned in uv.lock (guardrail S5). Add runtime deps per milestone step.
 dependencies = [
+    "confluent-kafka>=2.6",
     "polars>=2.1.0",
     "psycopg[binary]>=3.3.9",
     "pydantic>=2.9",
