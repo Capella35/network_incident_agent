@@ -1,4 +1,4 @@
-"""Read and aggregate one Milan activity file (format verified 2026-11-14, docs/data-sources.md).
+"""Read and aggregate one Milan activity file (format verified 2026-11-14, specs/02-telemetry.md).
 
 Rules (DECISIONS.md 2026-11-14): sum over country codes per (square, interval); empty field = 0;
 a missing (square, interval) row = 0 with `data_gap = true`; timestamps in UTC.

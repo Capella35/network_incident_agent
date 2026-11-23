@@ -1,4 +1,4 @@
-"""File checksums and verification against the published Dataverse values (docs/data-sources.md)."""
+"""File checksums and verification against published Dataverse values (specs/02-telemetry.md)."""
 
 from __future__ import annotations
 

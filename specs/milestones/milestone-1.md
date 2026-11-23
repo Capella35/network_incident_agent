@@ -4,9 +4,9 @@
 
 **Done when:** re-running the replay reproduces the same rows (same keys, same order).
 
-**Domain model:** `entities.yaml`, `kpis.yaml`, loader + validation; topology tables (`docs/domain-model.md` §9).
+**Domain model:** `entities.yaml`, `kpis.yaml`, loader + validation; topology tables (`specs/01-domain-model.md` §6).
 
-**Guardrails due this milestone** (`docs/guardrails.md`): P3, P4, P5, S1, S2, S3, S5, S6, R1, R2, R5.
+**Guardrails due this milestone** (`specs/08-guardrails.md`): P3, P4, P5, S1, S2, S3, S5, S6, R1, R2, R5.
 
 ## Detailed plan
 
@@ -30,7 +30,7 @@ Set this up before any application code so every later step has tests, lint, and
 - **Done when:** `make check` passes on an empty test suite; a commit containing a fake key is blocked locally and in CI.
 
 ### Step 2 — Domain model: entities + KPIs (~1 h) — *done 2026-11-19*
-- `src/common/domain/entities.yaml`: Core, AggregationNode, Site, Cell, Alarm, Incident, ChangeEvent, Team, with the ID formats and relations in `docs/domain-model.md` §2.
+- `src/common/domain/entities.yaml`: Core, AggregationNode, Site, Cell, Alarm, Incident, ChangeEvent, Team, with the ID formats and relations in `specs/01-domain-model.md` §2.
 - `src/common/domain/kpis.yaml`: the §3 KPI catalog (name, unit, meaning, bad direction, source, real/modeled/derived).
 - `src/common/domain/loader.py`: loads + validates both files into one typed, frozen object (e.g., pydantic); ID-format regexes exposed for reuse.
 - **Tests:** loader rejects a duplicate KPI name, an unknown unit, and a bad ID pattern; the valid YAML loads.
@@ -54,10 +54,10 @@ Set this up before any application code so every later step has tests, lint, and
 - **Topology (synthetic, seeded):** 1 square = 1 Cell; cells → Sites by proximity (~3 sectors per site); sites → AggregationNodes by k-means on location (~8–12 sites per node, enough for backhaul faults to span several sites); all AGG nodes → `CORE-1`. Seed and parameters committed in `src/producer/topology_config.yaml`.
 - Output: `data/processed/topology_nodes.csv`, `topology_edges.csv`, loaded into Postgres in Step 6.
 - **Tests:** same seed → identical topology; every cell has exactly one parent chain to `CORE-1`; all IDs match the `entities.yaml` patterns; no aggregation node with < 3 sites.
-- **Done when:** topology generated and labeled **synthetic** in `topology_meta.json` (instead of a CSV header comment, which would break CSV readers) and in `docs/data-sources.md`.
+- **Done when:** topology generated and labeled **synthetic** in `topology_meta.json` (instead of a CSV header comment, which would break CSV readers) and in `specs/02-telemetry.md`.
 
 ### Step 5 — Derived KPIs (modeled) (~1 h) — *done 2026-11-20*
-The telemetry schema (`schemas/telemetry-message.md`) carries `latency_ms` and `drop_rate`, so a first, simple model is needed here; Milestone 2 may refine it.
+The telemetry schema (`specs/02-telemetry.md`) carries `latency_ms` and `drop_rate`, so a first, simple model is needed here; Milestone 2 may refine it.
 - `src/producer/kpi_model.py`: `load_ratio` = cell traffic ÷ modeled capacity (e.g., the cell's 99th-percentile training-week load × headroom); `latency_ms` and `drop_rate` rise non-linearly with `load_ratio`, plus small seeded noise. Parameters in config, seeded.
 - **Tests:** deterministic for a fixed seed; monotonic in load; values within catalog ranges.
 - **Done when:** values follow the daily pattern of real load; labeled **modeled** in the code docstring and docs.
@@ -71,11 +71,11 @@ The telemetry schema (`schemas/telemetry-message.md`) carries `latency_ms` and `
 - **Done when:** `docker compose -f infra/docker-compose.yml up -d` starts all services healthy; `nc -z <laptop LAN IP> 5432` from another device fails (S1 check); `docker stats` within limits.
 
 ### Step 7 — Replay producer → Kafka (~1.5 h)
-- `src/producer/replay.py`: reads processed parquet for a date range, joins topology + modeled KPIs, emits one message per (cell, interval) per `schemas/telemetry-message.md`, with `schema_version` and `replay_run_id`.
+- `src/producer/replay.py`: reads processed parquet for a date range, joins topology + modeled KPIs, emits one message per (cell, interval) per `specs/02-telemetry.md`, with `schema_version` and `replay_run_id`.
 - **Deterministic order:** sort by `(interval_start, cell_id)` before sending; key = `cell_id|interval_start`; idempotent producer (`enable.idempotence=true`, `acks=all`). Since order is only guaranteed per partition, "same order" means: same per-partition sequence of keys.
 - Speed control: `--speed` (data minutes per wall second); `--max-rate` cap.
 - Malformed rows (schema validation fails) → `telemetry.dlq` with the reason.
-- Resolve the two **TODO** fields in `schemas/telemetry-message.md` (`site_id` carried or joined; `schema_version`, `replay_run_id`) and update the schema doc.
+- Resolve the two **TODO** fields in `specs/02-telemetry.md` (`site_id` carried or joined; `schema_version`, `replay_run_id`) and update the schema doc.
 - **Tests:** message builder against the schema; ordering function; a malformed row goes to the DLQ path (Kafka mocked).
 
 ### Step 8 — Postgres sink (~1 h)
@@ -93,7 +93,7 @@ The telemetry schema (`schemas/telemetry-message.md`) carries `latency_ms` and `
 
 ### Step 11 — Close-out (~30 min)
 - Walk the guardrail checklist (P3, P4, P5, S1, S2, S3, S5, S6, R1, R2, R5); record each as pass/fail in `BUILD_LOG.md`.
-- Update `README.md` quickstart (what now actually works), `docs/data-sources.md` (subset, time split confirmed), `DECISIONS.md` (subset size, Python version, partition count, KPI model), `CLAUDE.md` commands, and `HANDOFF.md`.
+- Update `README.md` quickstart (what now actually works), `specs/02-telemetry.md` (subset, time split confirmed), `DECISIONS.md` (subset size, Python version, partition count, KPI model), `CLAUDE.md` commands, and `specs/HANDOFF.md`.
 - ODbL attribution link in README (P3).
 
 ### Decisions (confirmed 2026-11-19)
@@ -101,7 +101,7 @@ The telemetry schema (`schemas/telemetry-message.md`) carries `latency_ms` and `
 |---|---|
 | Python version | 3.11 |
 | Subset size | ~150 squares, central Milan block (8 GB RAM total) |
-| Time split | as proposed in `docs/data-sources.md` (train 11-04→12-01, val 12-02→12-15, test 12-16→01-01) |
+| Time split | as proposed in `specs/02-telemetry.md` (train 11-04→12-01, val 12-02→12-15, test 12-16→01-01) |
 | `telemetry.raw` partitions | 6 |
 | Raw → DB sink | Plain Python consumer in M1; Spark from M2 |
 | Derived KPI model | Simple load-driven model in M1, refined in M2 if needed |

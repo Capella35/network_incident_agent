@@ -8,7 +8,7 @@ Purpose: portfolio project for a Forward Deployed Engineer role in telecom (targ
 The project lives in `~/Projects/network_incident_agent` (moved 2026-11-14). Keep it out of `~/Desktop` and `~/Documents`: iCloud sync there hides files inside `.venv` and breaks Docker volumes. Start Claude Code from this folder.
 
 ## Architecture in brief
-Milan traffic replay + fault injector → **Kafka** (`telemetry.raw`) → **Spark Structured Streaming** (windowed features + promoted detector) → Kafka `alarms` → **correlator** (topology rules + graph ranking) → incident + root node → **XGBoost** classifier → **PostgreSQL** → **Grafana** (KPIs, health), **Streamlit** console (human approve/correct/close), **ops agent** (Groq API, read-only tools). **MLflow** tracks every model run, holds the registry, and runs the promotion gate. Everything starts with `docker compose up`. Full diagram: `docs/architecture.md`.
+Milan traffic replay + fault injector → **Kafka** (`telemetry.raw`) → **Spark Structured Streaming** (windowed features + promoted detector) → Kafka `alarms` → **correlator** (topology rules + graph ranking) → incident + root node → **XGBoost** classifier → **PostgreSQL** → **Grafana** (KPIs, health), **Streamlit** console (human approve/correct/close), **ops agent** (Groq API, read-only tools). **MLflow** tracks every model run, holds the registry, and runs the promotion gate. Everything starts with `docker compose up`. Full diagram and component table: `specs/00-overview.md`.
 
 ## Status and commands
 Milestone 1 in progress (started 2026-11-19). Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
@@ -48,7 +48,7 @@ Planned, not built yet: `make replay`, `docker compose -f infra/docker-compose.y
 2. **Local only.** No public hosting or public live demo. Demos are local runs, screen-shares, and a recorded video. (The source repo itself is public on GitHub: code and docs only, never data or secrets.)
 3. **Data comes only from its canonical source and is never committed.** Milan files are downloaded manually in the browser (guestbook needs an email; no script sends it), then verified and processed by script. File hashes go in the manifest. Never run code from a dataset repository; download data files only.
 4. **Human gate.** The ops agent can read and draft, but it can **never** close, escalate, or re-route an incident. This is enforced in code (not exposed as tools; console action endpoints require a human user) and covered by a test, not just a prompt.
-5. **Quality bars are fixed in advance** (`evals/eval-plan.md`). Changing one requires a recorded reason next to it and in `DECISIONS.md`.
+5. **Quality bars are fixed in advance** (`specs/00-overview.md` → Definition of done; measured per `specs/09-evals.md`). Changing one requires a recorded reason next to it and in `DECISIONS.md`.
 6. **Incidents open only from detector output, never from ground truth.** The ground-truth fault log is for evaluation only.
 7. **Test weeks are touched once**, for the final numbers. Tuning uses validation weeks only.
 8. **Secrets live in `.env` only**, never committed. `.env.example` holds fake placeholders.
@@ -58,26 +58,22 @@ Planned, not built yet: `make replay`, `docker compose -f infra/docker-compose.y
 12. **Local services stay local.** All ports bound to `127.0.0.1`; no default passwords; secret scanning before every commit.
 13. **Agent tools are read-only and parameterized.** The model never writes SQL; free text (e.g., incident reports) is passed as data, not instructions; citations are verified in code.
 14. **No carrier branding or affiliation claims.** No carrier name or logo in the product, demo, or repo; no confidential employer material.
-15. **One domain model.** Entity names, KPI names/units, fault types, and incident states come from `src/common/domain/` (`docs/domain-model.md`); never hard-code them elsewhere. The fault injector must not use the fault signatures.
+15. **One domain model.** Entity names, KPI names/units, fault types, and incident states come from `src/common/domain/` (`specs/01-domain-model.md`); never hard-code them elsewhere. The fault injector must not use the fault signatures.
 
-Full list with enforcement points and per-milestone checklist: `docs/guardrails.md`.
+Full list with enforcement points and per-milestone checklist: `specs/08-guardrails.md`.
 
 ## Where things are
 | File | What it holds |
 |---|---|
-| `PROJECT.md` | Charter: goals, stack, milestones, definition of done, decision log |
+| `PROJECT.md` | Charter: goals, stack, milestones overview, decision log |
 | `README.md` | Technical design |
 | `DECISIONS.md` | Decided and open decisions |
-| `HANDOFF.md` | Current state and next step. **Read first in every session, update last.** |
+| `specs/HANDOFF.md` | Current state and next step. **Read first in every session, update last.** |
 | `BUILD_LOG.md` | Session-by-session build journal |
-| `docs/architecture.md` | Component and data-flow diagram |
-| `docs/data-sources.md` | Datasets, sources, licenses, download rules |
-| `docs/domain-model.md` | Entities, relations, KPI catalog, fault signatures, lifecycle; how the agent and evals use them |
-| `docs/guardrails.md` | Cost, privacy, security, agent-safety, and reputation guardrails + per-milestone checklist |
-| `docs/milestones/` | One file per milestone |
-| `schemas/` | Telemetry message and incident record field tables |
-| `evals/` | Evaluation plan (quality bars) and measured results log |
+| `specs/` | **What done means, read in order.** `00-overview` (read first: pipeline, components, Definition of done), `01-domain-model`, `02-telemetry` (data sources, licenses, `telemetry.raw` message), `03-detection`, `04-correlation` (+ incident record), `05-classification`, `06-ops-agent`, `07-human-gate`, `08-guardrails`, `09-evals`; `milestones/` (one file per milestone, each step with its "Done when"). Read the spec for the part you are building. |
+| `evals/` | `cases/` (recorded cases with known answers) and `results-log.md` (measured numbers); the plan is `specs/09-evals.md` |
 | `data/` | Downloaded data (git-ignored) + manifest |
-| `prompts/` | Reusable prompts for building or reviewing the project |
+| `prompts/` | Pointer to `.claude/skills/` (reusable procedures live there) |
+| `.claude/` | Claude Code config for *building* the repo (not the ops agent): `settings.json` (deny rules + hook wiring), `hooks/guard.py` (blocks `.env` access, writes under `data/`/`uv.lock`/`.git`, force-push, `--no-verify`, email over network, non-local `docker -p`), `skills/` (`milestone-step`, `new-package`), `agents/` (`eval-failure-reviewer`: diagnoses failed eval cases, read-only). Only the user edits `settings.json` and `hooks/`. |
 | `src/` | Application code, one folder per component (+ `common/`) |
-| `infra/`, `tests/` | Compose/Grafana/DB schema; tests incl. the human-gate test |
+| `infra/`, `tests/` | Compose/Grafana/DB schema; tests incl. the human-gate test and `tests/claude_hooks/` |

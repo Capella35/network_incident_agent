@@ -1,7 +1,7 @@
 # Network Incident Agent — Project Overview
 
 *What this project is, what it builds, and the plan.*
-*Status: design stage (started 2026-11-13, re-scoped to telecom network operations 2026-11-14, tech stack chosen 2026-11-14). No code yet. This document is the project charter; `README.md` is the technical design. Milestone plans live in `docs/milestones/`; the Milestone 1 plan is written just before it starts.*
+*Status: design stage (started 2026-11-13, re-scoped to telecom network operations 2026-11-14, tech stack chosen 2026-11-14). No code yet. This document is the project charter; `README.md` is the technical design. Specs and milestone plans live in `specs/`; the Milestone 1 plan is written just before it starts.*
 
 ---
 
@@ -18,7 +18,7 @@ Name: Network Incident Agent, set on 2026-11-14 (replacing "IoT Incident Agent")
 1. **Portfolio project for a Forward Deployed Engineer role in telecom (target: a US telecom carrier).** It is framed as a customer engagement: a real operations problem, a scoped solution, measured results, and stated limits. The write-up and demo matter as much as the code.
 2. **Solve a real NOC problem.** The expensive failures are late detection, alarm storms that hide the root cause, and mislabeled incidents routed to the wrong team. The system is built to measurably reduce all three.
 3. **A complete, running streaming AI system.** Telemetry ingestion, detection, correlation, classification, and a tool-using agent integrated into one system with production-grade foundations: streaming, containerized serving, MLOps, observability, reliability, security, and cost control.
-4. **Prove quality with numbers fixed in advance,** on data the system has never seen (see Definition of done).
+4. **Prove quality with numbers fixed in advance,** on data the system has never seen (see `specs/00-overview.md` → Definition of done).
 
 ## Tech stack
 
@@ -59,7 +59,7 @@ Everything runs from one command (`docker compose up`).
 
 Public telecom data with labeled faults is rare, so the data is **real traffic + injected, documented faults**. This is a deliberate trade-off and is stated openly in the README.
 
-- **Base traffic (real): Telecom Italia "Big Data Challenge" Milan dataset** (Harvard Dataverse) — real call/SMS/internet activity per grid square in 10-minute intervals, Nov 2013 – Jan 2014 (~2 months). Pulled programmatically from its canonical source by a download script; never redistributed in the repo; file hashes recorded in a data manifest. License confirmed 2026-11-14: **ODbL 1.0** (attribution link "from BigDataChallenge contest" required; share-alike applies to any derived database we publish). 62 daily files, ~20.8 GB in total, processed one day at a time and filtered to the cell subset (see `docs/data-sources.md`). Column layout is confirmed from the first downloaded file in Milestone 1.
+- **Base traffic (real): Telecom Italia "Big Data Challenge" Milan dataset** (Harvard Dataverse) — real call/SMS/internet activity per grid square in 10-minute intervals, Nov 2013 – Jan 2014 (~2 months). Pulled programmatically from its canonical source by a download script; never redistributed in the repo; file hashes recorded in a data manifest. License confirmed 2026-11-14: **ODbL 1.0** (attribution link "from BigDataChallenge contest" required; share-alike applies to any derived database we publish). 62 daily files, ~20.8 GB in total, processed one day at a time and filtered to the cell subset (see `specs/02-telemetry.md`). Column layout is confirmed from the first downloaded file in Milestone 1.
 - **Cell subset.** A fixed, documented subset of grid squares (e.g., a few hundred) is used so the stack runs on a laptop.
 - **Topology (synthetic, documented).** The dataset has no network topology, so a seeded generator maps grid squares to cells and sites, and sites to aggregation nodes and core, based on geographic proximity. The generator and its parameters are committed.
 - **Derived KPIs (modeled, documented).** Latency, drop rate, and similar KPIs are derived from real load through a documented model, so they follow real daily and weekly patterns.
@@ -100,15 +100,7 @@ Stretch (outside the estimate):
 
 ## Definition of done — v1
 
-Set on 2026-11-14 for the re-scoped project, before any build. Changing a bar later requires recording the reason next to it.
-
-- Detect **≥ 90%** of injected faults in the test weeks
-- Median detection delay **≤ 2 intervals** (20 min of data time); **≤ 1 false incident per simulated day** across the whole network (all three numbers always reported together, with the days of data they were measured on)
-- Root cause: correct root node ranked **#1 in ≥ 80%** of multi-cell incidents; alarm-to-incident compression ratio reported
-- Incident mislabel rate **≤ 10%**, reported per category, on test weeks and unseen report templates
-- The promoted detector beats the simplest baseline (seasonal z-score) on the validation objective; the comparison table is in the README
-- Ops agent: **≥ 80%** correct on a fixed eval set of ≥ 20 investigation questions, every answer citing evidence; 100% of close/escalate/re-route actions blocked without human approval (tested)
-- One command from a fresh clone reproduces the full demo, after the documented one-time manual data download *(changed 2026-11-14: Harvard Dataverse requires a guestbook form with an email for every download, so the download can't be automated without sending personal details)*; every reported number traces to a data snapshot, config, seed, and model version in MLflow; a dead detector alerts; known limits (including all synthetic components) are written in the README; demo video, screenshots, and the engagement write-up are in the repo
+Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a bar still requires a recorded reason next to it and in `DECISIONS.md`.
 
 ## Decision log
 
@@ -144,6 +136,8 @@ Set on 2026-11-14 for the re-scoped project, before any build. Changing a bar la
 | 2026-11-19 | GitHub repo stays public (code and docs only); "local only" applies to the running system and demo. |
 | 2026-11-19 | Laptop has 8 GB RAM total: cell subset ~150 squares, Spark behind a Compose profile in M1, per-container memory limits. Quality bars unchanged. |
 | 2026-11-19 | Tooling: uv + `uv.lock` pins, ruff, mypy strict, pytest, pre-commit (gitleaks), GitHub Actions CI, Claude Code deny rules. |
+| 2026-11-22 | **Numbered `specs/` folder** (`00-overview` … `09-evals` + `milestones/`): one spec per product behavior, read in order. `docs/` folded in (architecture → 00, domain model → 01, data sources + telemetry message → 02, incident record → 04, guardrails → 08); Definition of done moved to `00-overview.md`; `evals/eval-plan.md` → `09-evals.md`; new 03, 05, 06, 07 assembled from this charter and the README. Supersedes the 2026-11-14 `docs/milestones/` entry. |
+| 2026-11-22 | `HANDOFF.md` moved to `specs/HANDOFF.md` (user's choice), next to the milestone plans it tracks. Still read first in every session and updated last. |
 
 ## Still open
 

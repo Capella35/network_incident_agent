@@ -1,7 +1,7 @@
 """Load and validate the domain model (entities + KPI catalog).
 
 Every component gets entity names, ID formats, team codes, and KPI definitions from here,
-never from string literals elsewhere (CLAUDE.md Rule 15, docs/domain-model.md).
+never from string literals elsewhere (CLAUDE.md Rule 15, specs/01-domain-model.md).
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-# Columns of the Milan activity files (docs/data-sources.md). Real KPIs may only map to these.
+# Columns of the Milan activity files (specs/02-telemetry.md). Real KPIs may only map to these.
 MILAN_FIELDS = frozenset({"sms_in", "sms_out", "call_in", "call_out", "internet"})
 
 _DEFAULT_DIR = files("common.domain")

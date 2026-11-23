@@ -1,4 +1,4 @@
-# Entity types, ID formats (pattern + template), and relations. Single source of truth (Rule 15; docs/domain-model.md §2).
+# Entity types, ID formats (pattern + template), and relations. Single source of truth (Rule 15; specs/01-domain-model.md §2).
 # Topology levels (Core → Cell) are SYNTHETIC: generated from Milan grid squares by proximity.
 version: 1
 

@@ -9,7 +9,24 @@
       "Edit(/data/processed/**)",
       "Edit(/data/manifest.json)",
       "Edit(/.git/**)",
-      "Edit(/uv.lock)"
+      "Edit(/uv.lock)",
+      "Edit(/.claude/settings.json)",
+      "Edit(/.claude/settings.local.json)",
+      "Edit(/.claude/hooks/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|Read|Grep|Edit|MultiEdit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }

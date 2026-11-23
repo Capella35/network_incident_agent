@@ -1,4 +1,4 @@
-# KPI catalog. Single source of truth for KPI names and units (Rule 15; docs/domain-model.md §3).
+# KPI catalog. Single source of truth for KPI names and units (Rule 15; specs/01-domain-model.md §3).
 # source: real = Milan data; modeled = synthetic, computed from real load; derived = computed from other KPIs.
 # Milan values are scaled (no physical unit): compare each cell to its own baseline, never in absolute terms.
 version: 1

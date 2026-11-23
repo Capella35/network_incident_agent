@@ -2,7 +2,7 @@
 
 **Turns a cellular network's alarm storm into one incident with a root cause, a label, and an AI ops assistant that explains it with evidence, while a human stays in charge.**
 
-> Status: design. Nothing is built yet. Commands and results below describe the target, not working code. The project charter (goals, decisions, milestones) is in [`PROJECT.md`](PROJECT.md).
+> Status: design. Nothing is built yet. Commands and results below describe the target, not working code. The project charter (goals, decisions, milestones) is in [`PROJECT.md`](PROJECT.md). Specs, read in order: [`specs/00-overview.md`](specs/00-overview.md).
 
 ---
 
@@ -60,7 +60,7 @@ MLflow: every detector/classifier run, the model registry, and the promotion gat
 
 ## The data
 
-- **Real traffic:** [Telecom Italia Big Data Challenge — Milan](https://dataverse.harvard.edu/) (Harvard Dataverse). Call, SMS, and internet activity per grid square in 10-minute intervals, Nov 2013 – Jan 2014. Licensed under ODbL 1.0; data is used "from BigDataChallenge contest" (attribution links in `docs/data-sources.md`). The 62 daily files (~20.8 GB) are downloaded manually in the browser (Dataverse asks for an email on a guestbook form), then checked against their published MD5, filtered to the cell subset, and optionally deleted by script. Hashes are recorded in `data/manifest.json`. Nothing is committed.
+- **Real traffic:** [Telecom Italia Big Data Challenge — Milan](https://dataverse.harvard.edu/) (Harvard Dataverse). Call, SMS, and internet activity per grid square in 10-minute intervals, Nov 2013 – Jan 2014. Licensed under ODbL 1.0; data is used "from BigDataChallenge contest" (attribution links in `specs/02-telemetry.md`). The 62 daily files (~20.8 GB) are downloaded manually in the browser (Dataverse asks for an email on a guestbook form), then checked against their published MD5, filtered to the cell subset, and optionally deleted by script. Hashes are recorded in `data/manifest.json`. Nothing is committed.
 - **Topology (synthetic):** grid squares are mapped to cells and sites, and sites to aggregation nodes and core, by geographic proximity (seeded, committed).
 - **Derived KPIs (modeled):** latency and drop rate are modeled from real load, so they follow real daily and weekly patterns.
 - **Injected faults:**
@@ -93,7 +93,7 @@ Features: blast radius (cells, sites, and aggregation nodes affected), topology 
 
 ### Ops agent: Groq
 
-It uses read-only, typed tools built on the domain model (`docs/domain-model.md`): `query_kpis`, `get_topology`, `list_alarms`, `get_incident`, `check_signature`, `list_change_events`, `describe_kpi`, `describe_fault_type`, `similar_past_incidents`. It reasons by differential diagnosis: it checks each candidate fault type's signature, marks it supported or ruled out with citations, and returns a structured answer that code validates (IDs exist, the fault type fits the root level). Every answer must cite the rows or charts it used. Actions (close, escalate, re-route) are not exposed as tools, and the console's action endpoints check for a human user. A test verifies this. The LLM sits behind a small provider interface, so it can be swapped. Calls are rate-limited for the free tier, and every call is logged with its token count.
+It uses read-only, typed tools built on the domain model (`specs/01-domain-model.md`): `query_kpis`, `get_topology`, `list_alarms`, `get_incident`, `check_signature`, `list_change_events`, `describe_kpi`, `describe_fault_type`, `similar_past_incidents`. It reasons by differential diagnosis: it checks each candidate fault type's signature, marks it supported or ruled out with citations, and returns a structured answer that code validates (IDs exist, the fault type fits the root level). Every answer must cite the rows or charts it used. Actions (close, escalate, re-route) are not exposed as tools, and the console's action endpoints check for a human user. A test verifies this. The LLM sits behind a small provider interface, so it can be swapped. Calls are rate-limited for the free tier, and every call is logged with its token count.
 
 ## Evaluation
 
@@ -121,7 +121,7 @@ It uses read-only, typed tools built on the domain model (`docs/domain-model.md`
 
 ```bash
 cp .env.example .env              # add LLM_API_KEY only if you want the agent
-# first: download the Milan files in your browser into data/raw/ (see docs/data-sources.md)
+# first: download the Milan files in your browser into data/raw/ (see specs/02-telemetry.md)
 make data                         # verify MD5s, filter to the cell subset, build topology
 docker compose up                 # Kafka, Spark, Postgres, MLflow, Grafana, Streamlit
 make train                        # tune detectors + classifier, register best in MLflow
@@ -146,7 +146,7 @@ src/
 infra/           # docker-compose.yml, Grafana dashboards, DB schema
 data/            # downloaded + generated, git-ignored (manifest committed)
 tests/           # incl. human-gate test
-docs/, schemas/, evals/, prompts/   # project docs, field specs, eval plan + results
+specs/, evals/, prompts/            # numbered specs + milestone plans; eval cases + results
 ```
 
 ## Honest limits

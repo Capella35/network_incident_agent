@@ -1,6 +1,20 @@
-# Incident record
+# 04 — Correlation and root cause
 
-Derived from `README.md` / `PROJECT.md`. Fields marked **TODO** were inferred.
+Groups the alarm storm into **one incident** and ranks the most likely **root node**. Built in Milestone 3 (`milestones/milestone-3.md`). Drawn from `PROJECT.md` → What is being built (item 6) and `01-domain-model.md`; details still open are marked **(M3)**.
+
+## Behavior
+- The correlator (`src/correlation/`) groups alarms **in time** and **across the topology graph** (cell → site → aggregation node → core) into one incident.
+- **Incidents open only from detector output, never from ground truth** (Rule 6).
+- **Root-node ranking:** candidates are the affected cells' common ancestors; each is scored with the fault signatures (`01-domain-model.md` §4), and the ranked list is stored (`root_candidates`). Scoring function and grouping windows **(M3)**.
+- **Consistency constraints** (`01-domain-model.md` §4) are checked on every incident: every affected cell is a descendant of the root node, and the fault type's root level matches.
+- **Alarm-to-incident compression ratio** is reported (Definition of done) and shown on the "alarm storm vs. incidents" dashboard.
+
+## Quality bar
+Correct root node ranked **#1 in ≥ 80%** of multi-cell incidents (`00-overview.md`, measured as in `09-evals.md`).
+
+## Incident record
+
+The record every later stage reads and adds to (classifier: labels; agent: draft; console: human decisions). Fields marked **TODO** were inferred.
 
 | Field | Type | Meaning |
 |---|---|---|

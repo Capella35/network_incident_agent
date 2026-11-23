@@ -15,8 +15,9 @@ format:  ## Apply ruff formatting and safe fixes
 	uv run ruff format .
 	uv run ruff check --fix .
 
-typecheck:  ## mypy (strict) on src/
+typecheck:  ## mypy (strict) on src/ and the Claude Code guard hook
 	uv run mypy
+	uv run mypy --strict .claude/hooks/guard.py
 
 test:  ## Unit tests with coverage (integration tests excluded)
 	uv run pytest -m "not integration" --cov --cov-report=term-missing

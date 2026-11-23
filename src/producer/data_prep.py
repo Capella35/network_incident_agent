@@ -66,7 +66,7 @@ def prepare_grid(
     """Verify the grid, (re)write the subset file, and return the subset square IDs."""
     path = paths.raw / GRID_FILE
     if not path.exists():
-        raise FileNotFoundError(f"{path} missing: download it manually (docs/data-sources.md)")
+        raise FileNotFoundError(f"{path} missing: download it manually (specs/02-telemetry.md)")
     spec, hashes = integrity.verify(path, published)
     changed = doc["files"].get(path.name, {}).get("sha256") != hashes.sha256
     if changed or force:

@@ -1,4 +1,4 @@
-"""Real and MODELED per-cell KPIs (milestone 1, step 5; docs/domain-model.md §3).
+"""Real and MODELED per-cell KPIs (milestone 1, step 5; specs/01-domain-model.md §3).
 
     python -m producer.kpi_model [--data-dir data]     # calibrate on processed training days
 

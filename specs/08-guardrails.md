@@ -1,8 +1,8 @@
-# Guardrails
+# 08 — Guardrails (what it never does)
 
 Rules that prevent extra cost, privacy problems, security holes, unsafe agent behavior, and reputational risk. Set 2026-11-14. Status: design. Each guardrail names where it is enforced and how it is checked. Values marked **(default)** are starting points; change them with a recorded reason in `DECISIONS.md`.
 
-The key rules are repeated in `CLAUDE.md`.
+The key rules are repeated in `CLAUDE.md`. These guard the **product**; Claude Code, which builds the repo, is guarded separately by `.claude/settings.json` and `.claude/hooks/guard.py`.
 
 ---
 
@@ -36,7 +36,7 @@ The key rules are repeated in `CLAUDE.md`.
 |---|---|---|---|
 | P1 | **Only aggregated, synthetic, or modeled data goes to the LLM.** Never secrets, environment values, file paths, or raw config. Tool outputs are built from whitelisted fields only. | `src/agent/` tools | Test: tool outputs contain only whitelisted fields |
 | P2 | **Check Groq's data-use and retention policy** before the first real call; record the result. | Milestone 5 | `BUILD_LOG.md` entry |
-| P3 | **Milan license (ODbL 1.0) respected:** attribution link "from BigDataChallenge contest" in README, write-up, and video; never redistribute raw data; publish no derived data unless under ODbL (recorded in `DECISIONS.md`). | `docs/data-sources.md`, README | Milestone 1 + 6 checklists |
+| P3 | **Milan license (ODbL 1.0) respected:** attribution link "from BigDataChallenge contest" in README, write-up, and video; never redistribute raw data; publish no derived data unless under ODbL (recorded in `DECISIONS.md`). | `specs/02-telemetry.md`, README | Milestone 1 + 6 checklists |
 | P4 | **Data never committed.** `data/` is git-ignored except README and manifest files. | `.gitignore` | Pre-commit check (S3) |
 | P5 | **No personal data.** The Milan data is aggregated per grid square; nothing per-person is added, generated, or joined. | Project scope | Review at Milestone 1 |
 | P6 | **Logs hold no secrets or full LLM prompts with sensitive values**; API keys are masked if printed. | `src/common/` logging | Grep logs for key patterns in CI |

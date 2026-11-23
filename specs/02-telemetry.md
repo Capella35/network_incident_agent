@@ -1,6 +1,6 @@
-# Data Sources
+# 02 — Telemetry (data in)
 
-Source of truth: `PROJECT.md` → The data.
+Where the data comes from, how it is processed, which parts are synthetic or modeled, and the message the replay emits. Summary in `PROJECT.md` → The data.
 
 > **Note:** SKAB and MetroPT-3 were the datasets of the original industrial scope. They were **dropped on 2026-11-14** when the project was re-scoped to telecom (see `DECISIONS.md`). They are not used.
 
@@ -52,7 +52,7 @@ A processing script then handles them **one day at a time**: check MD5 against t
 
 **Published checksums:** the file IDs, sizes, and MD5s of all 63 files (62 daily + grid), taken from the public Dataverse metadata API (no guestbook needed for metadata), are committed in `src/producer/milan_files.json` and used by `make data` to verify each manual download. Retrieved 2026-11-20.
 
-**Proposed time split** (9 weeks of data; to confirm in the Milestone 1 plan):
+**Time split** (9 weeks of data; confirmed 2026-11-19, in code since 2026-11-20 as `src/common/splits.yaml`):
 - Training: 2013-11-04 → 2013-12-01 (4 weeks)
 - Validation: 2013-12-02 → 2013-12-15 (2 weeks)
 - Test: 2013-12-16 → 2014-01-01, including the Christmas / New Year holidays as a realistic false-alarm test
@@ -60,7 +60,7 @@ A processing script then handles them **one day at a time**: check MD5 against t
 ## Synthetic / modeled parts (generated, committed as code + parameters)
 - **Topology (decided 2026-11-20):** one grid square = one Cell; each row of the 12 × 12 subset is cut west → east into strips of 3 squares, one Site per strip (48 sites, 3 sectors each); sites are grouped into 5 AggregationNodes by seeded k-means on location (7–12 sites each); all hang off `CORE-1`. Parameters in `src/producer/topology_config.yaml` (seed 20131101); generator `src/producer/topology.py`; outputs `data/processed/topology_nodes.csv`, `topology_edges.csv`, and `topology_meta.json` (`"synthetic": true`, config, input hashes). Real networks are not laid out like this.
 - **Derived KPIs:** latency, drop rate, etc., modeled from real load.
-- **Injected faults:** cell outage, site power failure, backhaul failure, congestion, bad config push (see `README.md`).
+- **Injected faults:** cell outage, site power failure, backhaul failure, congestion, bad config push (fault types: `01-domain-model.md` §4; the injector does not use the signatures, Rule 15).
 - **Noisy reports:** human-style incident descriptions; test set uses unseen templates.
 
 ## Rules
@@ -71,3 +71,27 @@ A processing script then handles them **one day at a time**: check MD5 against t
    - **Share-alike:** any derived or combined *database* we publish must be published under ODbL. Default: we publish **no** derived data (only code), so this doesn't apply. If that changes, record it in `DECISIONS.md` and publish the data under ODbL.
 4. **Hash manifest.** Every downloaded file's SHA-256 hash, source, download date, and license are recorded in the manifest (`data/manifest.json`; template in `data/manifest-template.md`).
 5. **Never committed.** Data files are git-ignored.
+
+## Telemetry message (`telemetry.raw`)
+
+Milan-derived fields verified 2026-11-14 against `sms-call-internet-mi-2013-11-01.txt`. One message = one cell (grid square) per 10-minute interval, summed over country codes. Fields still marked **TODO** were inferred.
+
+**Kafka key:** `(cell_id, interval_start)`, which makes replays deterministic and idempotent. Malformed messages go to the dead-letter topic.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `cell_id` | string | Cell identifier, `CELL-<site>-<sector>`, mapped from a Milan grid square by the topology generator |
+| `square_id` | int | Milan grid square (1–10000), from the grid's `cellId` |
+| `interval_start` | timestamp (UTC) | Start of the 10-minute interval (Milan `time_interval`, epoch ms UTC) |
+| `site_id` | string | TODO (inferred): parent site, from topology; may be joined later instead of carried in the message |
+| `sms_in` | float | Incoming SMS activity (scaled), summed over country codes; empty = 0 |
+| `sms_out` | float | Outgoing SMS activity (scaled), as above |
+| `call_in` | float | Incoming call activity (scaled), as above |
+| `call_out` | float | Outgoing call activity (scaled), as above |
+| `internet` | float | Internet activity (scaled), as above |
+| `data_gap` | bool | True if the source had no row for this square and interval (values set to 0) |
+| `load_ratio` | float, nullable | Modeled: load ÷ the cell's modeled capacity (training-week q99 × 1.25). Null when `data_gap` |
+| `latency_ms` | float, nullable | Modeled from load (queueing curve, seeded noise). Null when `data_gap` |
+| `drop_rate` | float, nullable | Modeled from load (logistic rise near saturation, seeded noise). Null when `data_gap` |
+| `schema_version` | int | TODO (inferred): schema version for evolution |
+| `replay_run_id` | string | TODO (inferred): which replay run produced this message |
