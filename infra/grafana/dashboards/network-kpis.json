@@ -1,0 +1,178 @@
+{
+  "description": "Per-cell telemetry from telemetry_raw. Traffic: real ([from BigDataChallenge contest](https://doi.org/10.7910/DVN/EGZHFV), ODbL 1.0). Topology and latency: synthetic/modeled. Not a real network.",
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "netops-postgres"
+      },
+      "description": "KPI `traffic_internet` (scaled_activity); bad direction: drop.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": false
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "netops-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT interval_start AS time, cell_id AS metric, \"internet\" AS value\nFROM telemetry_raw\nWHERE replay_run_id = '$run' AND site_id = '$site' AND cell_id IN ($cell)\n  AND $__timeFilter(interval_start)\nORDER BY 1, 2",
+          "refId": "A"
+        }
+      ],
+      "title": "Internet activity (real, scaled)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "netops-postgres"
+      },
+      "description": "KPI `latency_ms` (ms); bad direction: high.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "spanNulls": false
+          },
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "netops-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT interval_start AS time, cell_id AS metric, \"latency_ms\" AS value\nFROM telemetry_raw\nWHERE replay_run_id = '$run' AND site_id = '$site' AND cell_id IN ($cell)\n  AND $__timeFilter(interval_start)\nORDER BY 1, 2",
+          "refId": "A"
+        }
+      ],
+      "title": "Modeled user-plane latency (MODELED)",
+      "type": "timeseries"
+    },
+    {
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 3,
+      "options": {
+        "content": "Traffic: real ([from BigDataChallenge contest](https://doi.org/10.7910/DVN/EGZHFV), ODbL 1.0). Topology and latency: synthetic/modeled. Not a real network.",
+        "mode": "markdown"
+      },
+      "title": "",
+      "type": "text"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": [
+    "netops",
+    "synthetic-topology"
+  ],
+  "templating": {
+    "list": [
+      {
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "netops-postgres"
+        },
+        "definition": "SELECT replay_run_id FROM telemetry_raw GROUP BY 1 ORDER BY max(ingested_at) DESC",
+        "label": "Replay run",
+        "name": "run",
+        "query": "SELECT replay_run_id FROM telemetry_raw GROUP BY 1 ORDER BY max(ingested_at) DESC",
+        "refresh": 2,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "netops-postgres"
+        },
+        "definition": "SELECT DISTINCT site_id FROM telemetry_raw WHERE replay_run_id = '$run' ORDER BY 1",
+        "label": "Site",
+        "name": "site",
+        "query": "SELECT DISTINCT site_id FROM telemetry_raw WHERE replay_run_id = '$run' ORDER BY 1",
+        "refresh": 2,
+        "sort": 0,
+        "type": "query"
+      },
+      {
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "netops-postgres"
+        },
+        "definition": "SELECT DISTINCT cell_id FROM telemetry_raw WHERE replay_run_id = '$run' AND site_id = '$site' ORDER BY 1",
+        "includeAll": true,
+        "label": "Cell",
+        "multi": true,
+        "name": "cell",
+        "query": "SELECT DISTINCT cell_id FROM telemetry_raw WHERE replay_run_id = '$run' AND site_id = '$site' ORDER BY 1",
+        "refresh": 2,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "2013-11-04T00:00:00.000Z",
+    "to": "2013-11-11T00:00:00.000Z"
+  },
+  "timezone": "utc",
+  "title": "Network KPIs (milestone 1)",
+  "uid": "netops-network-kpis",
+  "version": 1
+}

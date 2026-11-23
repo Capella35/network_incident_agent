@@ -20,6 +20,26 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-22 — Milestone 1, step 9: Grafana panel
+
+**What was built:**
+- `src/common/grafana.py` + `make dashboards`: generates `infra/grafana/dashboards/network-kpis.json` from `kpis.yaml`: two time-series panels (*Internet activity (real, scaled)*, *Modeled user-plane latency (MODELED)*), selectors for replay run / site / cells, 5 s refresh, opens on training week 1, footer with the ODbL attribution and the synthetic/modeled label.
+- `infra/grafana/provisioning/`: Postgres data source as `readonly` (password from the container environment), dashboard provider (read-only, no UI edits); placeholder `plugins/` and `alerting/` folders so Grafana logs no read errors. Mounted read-only in `docker-compose.yml`.
+
+**Tests run and results:**
+- Unit (10): committed JSON equals the generator output; every `Unit` maps to a Grafana unit; KPI SQL from the catalog; titles, units, real/MODELED labels; unknown KPI fails; footer; time window from `splits.yaml`; provisioning files (readonly user, password as an env placeholder). `make check`: 253 passed, 92% coverage.
+- Integration (4, through Grafana's API as admin): data source provisioned, read-only, health OK; a write through a panel query is refused (the plugin runs queries in a read-only transaction, SQLSTATE 25006, on top of the role having no grants); dashboard provisioned; the panel's own SQL returns the latest run's rows. `make test-integration`: 18 passed.
+- Live check: `make replay ARGS="--start 2013-11-05 --speed 5"` with `make sink` alongside: rows grew ~1,440 per 20 s (10 intervals = 100 data minutes, matching `--speed 5`); the panel-query test passed mid-run against the live run. Two more live runs (2013-11-06, 2013-11-07), each 20,736 sent / written / 0 dead-lettered; the user watched `step9-live-2013-11-07` grow in the browser (screenshot: real daily traffic pattern, modeled latency peaking at ~100–170 ms at busy times).
+- Two sinks overlapped for a while (same consumer group): 31,230 + 10,242 = 41,472 = two days exactly; the group split the partitions with nothing lost or duplicated.
+
+**Decisions made:** (also in DECISIONS.md)
+- Generated dashboards with a drift test; read-only provisioning; training-week default window; attribution link to the dataset DOI page.
+
+**Open items:**
+- The "Replay run" selector keeps the run stored in the page URL; after a new replay, pick it from the dropdown (a reload alone keeps the old one).
+- P3 (Step 11): confirm the attribution links (Big Data Challenge page / ODI Trento) for the README and the dashboard footer.
+- `telemetry_raw` now holds four runs: `step7-check-2013-11-04`, `step9-live-2013-11-05`, `-06`, `-07` (20,736 rows each).
+
 ## 2026-11-22 — Milestone 1, step 8: Postgres sink
 
 **What was built:**

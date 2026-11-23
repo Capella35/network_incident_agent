@@ -1,0 +1,22 @@
+# Postgres data source for Grafana (milestone 1, step 9). Provisioned as code, not editable in the UI.
+# Logs in as the read-only role (guardrail S4). The password comes from the container's
+# environment (READONLY_PASSWORD, set by Compose); it is never written in this file.
+apiVersion: 1
+
+datasources:
+  - name: netops-postgres (readonly)
+    uid: netops-postgres            # referenced by src/common/grafana.py
+    type: grafana-postgresql-datasource
+    access: proxy
+    url: postgres:5432              # Compose network; the host port is never used here
+    user: readonly
+    isDefault: true
+    editable: false
+    jsonData:
+      database: ${POSTGRES_DB}
+      sslmode: disable              # container-to-container on the private Compose network
+      postgresVersion: 1800
+      timescaledb: false
+      maxOpenConns: 5
+    secureJsonData:
+      password: ${READONLY_PASSWORD}
