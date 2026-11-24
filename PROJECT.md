@@ -144,3 +144,8 @@ Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a 
 
 - **Groq model:** chosen at Milestone 5, by tool-calling reliability on the agent eval set.
 - **Data versioning:** DVC vs. plain versioned snapshots (plain snapshots recommended).
+- **Owning team (M4):** derive from the predicted fault category by lookup instead of predicting it; predict severity only for `congestion`.
+- **SYNTHETIC dispatch matrix (M4):** `dispatch.yaml` mapping fault type + region/time/vendor to a team, deterministic, modeled on public frameworks.
+- **SYNTHETIC runbooks + `get_runbook` tool (M5):** cited by the agent, passed as data.
+- **Concurrent investigations (M5):** one agent run per incident, severity queue, shared global budget; possible `related_open_incidents` tool.
+- **MCP wrapper for agent tools:** decide after Milestone 5's quality bar is met.
