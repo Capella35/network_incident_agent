@@ -109,6 +109,20 @@ def test_end_before_start_rejected() -> None:
         replay.days_in_range(DAY, DAY - timedelta(days=1))
 
 
+def test_injector_errors_reach_callers_as_replay_errors(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Packages outside producer may not import the injector (Rule 6), so they can only catch
+    ReplayError."""
+
+    def fail(*_a: object, **_k: object) -> None:
+        raise replay.injector.InjectorError("schedule drifted: re-run make inject")
+
+    monkeypatch.setattr(replay.injector, "for_days", fail)
+    with pytest.raises(replay.ReplayError, match="re-run make inject"):
+        replay.telemetry_for(data_dir, [DAY], inject=True)
+
+
 def test_missing_day_named(data_dir: Path) -> None:
     with pytest.raises(replay.ReplayError, match="2013-11-06 not processed"):
         replay.load_traffic(data_dir, [date(2013, 11, 6)])

@@ -10,14 +10,11 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import polars as pl
 
 from common.domain.loader import MILAN_FIELDS
-
-MILAN_TZ = ZoneInfo("Europe/Rome")
-INTERVAL = timedelta(minutes=10)
+from common.telemetry import INTERVAL, LOCAL_TZ
 
 # Column order per the dataset paper; the five activity fields must match the domain model.
 ACTIVITY_FIELDS = ("sms_in", "sms_out", "call_in", "call_out", "internet")
@@ -54,8 +51,8 @@ def file_date(path: Path) -> date:
 
 def day_intervals(day: date) -> list[datetime]:
     """UTC starts of the 10-minute intervals of one Milan local day (handles DST)."""
-    start = datetime.combine(day, time(), MILAN_TZ).astimezone(UTC)
-    end = datetime.combine(day + timedelta(days=1), time(), MILAN_TZ).astimezone(UTC)
+    start = datetime.combine(day, time(), LOCAL_TZ).astimezone(UTC)
+    end = datetime.combine(day + timedelta(days=1), time(), LOCAL_TZ).astimezone(UTC)
     out = []
     t = start
     while t < end:

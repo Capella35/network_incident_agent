@@ -149,4 +149,5 @@ Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a 
 - **SYNTHETIC dispatch matrix (M4):** `dispatch.yaml` mapping fault type + region/time/vendor to a team, deterministic, modeled on public frameworks.
 - **SYNTHETIC runbooks + `get_runbook` tool (M5):** cited by the agent, passed as data.
 - **Concurrent investigations (M5):** one agent run per incident, severity queue, shared global budget; possible `related_open_incidents` tool.
+- **Class imbalance in the incident classifier (M4):** per-class metrics and macro-F1, class weights, more training-split faults; validation/test keep their natural mix; watch `no_fault`.
 - **MCP wrapper for agent tools:** decide after Milestone 5's quality bar is met.

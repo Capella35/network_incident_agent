@@ -8,6 +8,7 @@ from statistics import fmean, pstdev
 import polars as pl
 import pytest
 
+from common import telemetry
 from producer import grid, kpi_model, milan, topology
 from tests.producer.conftest import write_grid
 
@@ -75,7 +76,7 @@ def test_params_load_and_reference_domain(params: kpi_model.Params) -> None:
 
 
 def test_real_kpis_from_domain_mapping() -> None:
-    f = kpi_model.add_real_kpis(traffic(date(2013, 11, 4), {1: [10.0]}))
+    f = telemetry.add_real_kpis(traffic(date(2013, 11, 4), {1: [10.0]}))
     row = f.row(0, named=True)
     assert row["traffic_internet"] == 10.0
     assert row["traffic_voice"] == 7.0  # call_in + call_out

@@ -24,6 +24,8 @@ Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 next, not planned yet.
 | Rebuild only the synthetic topology | `make topology` |
 | Fit modeled cell capacity on training days | `make calibrate` |
 | Write a split's SYNTHETIC fault schedule (ground truth, read only by `src/evaluation/`) | `make inject ARGS="--split validation"` |
+| Fit the seasonal KPI baseline (cell, weekday, hour) on training weeks; refit after `make calibrate` | `make baseline` |
+| Compute a split's detection features and report time + memory | `make features ARGS="--split validation --inject"` |
 | Start / stop the local stack (Kafka, Postgres, MLflow, Grafana); needs `.env` | `make up` / `make down` (`make ps`, `make logs`) |
 | Load the synthetic topology into Postgres | `make db-topology` |
 | Apply schema changes after `001_init.sql` to the running database (idempotent) | `make db-migrate` |
@@ -36,7 +38,7 @@ Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 next, not planned yet.
 
 Host ports, all on `127.0.0.1`: Postgres 5433 (5432 is often taken by a local Postgres), MLflow 5001, Grafana 3000 (user `admin`), Kafka 9092.
 
-Planned, not built yet: Milestone 2 Steps 3–11 (features, detectors, `make train`, promotion, the Spark detector job, `make detect-check`) and everything after. Don't claim it works until it exists.
+Planned, not built yet: Milestone 2 Steps 4–11 (detectors, `make train`, promotion, the Spark detector job, `make detect-check`) and everything after. Don't claim it works until it exists.
 
 **Laptop limit:** 8 GB RAM total. Keep containers memory-capped; Spark runs only under its Compose profile.
 
@@ -48,7 +50,7 @@ Planned, not built yet: Milestone 2 Steps 3–11 (features, detectors, `make tra
 - Anything that fits or tunes on data must go through `common.splits` (`splits.require(day, Split.TRAIN)` or `VALIDATION`); never read test days outside the final evaluation.
 
 ## Code quality (no AI slop)
-- **Search before you write.** Reuse what exists: `common.kafka` (Kafka settings), `common.db` (Postgres roles), `common.telemetry` (message schema), `producer.replay.telemetry_for` (telemetry for a day range, optionally fault-injected: the one path for replay and offline code), `producer.topology.Index` (topology lookups), `tests/factories.py` (test messages), `tests/fakes.py` (fake Kafka message, fake clock), `tests/integration/conftest.py` (throwaway topics, producer, writer connection, read-back). Never copy a block into a second file; move it to `common/` or a shared test helper instead.
+- **Search before you write.** Reuse what exists: `common.kafka` (Kafka settings), `common.db` (Postgres roles), `common.telemetry` (message schema, `INTERVAL`, `LOCAL_TZ`, `add_real_kpis`), `producer.data_prep.processed_days` (a split's processed days), `producer.replay.telemetry_for` (telemetry for a day range, optionally fault-injected: the one path for replay and offline code), `producer.topology.Index` (topology lookups), `tests/factories.py` (test messages; `telemetry_frame` for `telemetry_for`-shaped rows), `streaming.features` (detection features; imports only `common`), `tests/fakes.py` (fake Kafka message, fake clock), `tests/integration/conftest.py` (throwaway topics, producer, writer connection, read-back). Never copy a block into a second file; move it to `common/` or a shared test helper instead.
 - **Smallest change that meets the step's "Done when".** No speculative options, layers, or abstractions for later milestones; add them when a step needs them.
 - **No dead code:** no commented-out code, unused parameters, `if False`, or leftover debug output.
 - **Comments say why, not what.** Docstrings state the contract (inputs, outputs, what is SYNTHETIC/MODELED); the code says the rest.

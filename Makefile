@@ -1,4 +1,4 @@
-.PHONY: help setup lint format typecheck test check data topology calibrate inject clean \
+.PHONY: help setup lint format typecheck test check data topology calibrate baseline features inject clean \
 	env-check up down ps logs spark-smoke db-migrate db-topology replay sink replay-check dashboards \
 	test-integration
 
@@ -44,6 +44,12 @@ topology:  ## Rebuild only the SYNTHETIC topology from data/processed/subset.jso
 
 calibrate:  ## Fit MODELED cell capacity on processed training days -> kpi_calibration.json
 	uv run python -m producer.kpi_model
+
+baseline:  ## Fit the seasonal KPI baseline (cell, weekday, hour) on processed training days
+	uv run python -m streaming.baseline $(ARGS)
+
+features:  ## Compute detection features for a split and report time + memory (ARGS="--split validation --inject")
+	uv run python -m streaming.features_check $(ARGS)
 
 inject:  ## Write a split's SYNTHETIC fault schedule (ground truth, for evaluation) (ARGS="--split validation")
 	uv run python -m producer.injector $(ARGS)

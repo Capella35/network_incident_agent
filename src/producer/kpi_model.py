@@ -30,7 +30,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from common import splits
 from common.domain import load_domain
 from common.domain.loader import KpiSource
-from producer import integrity, topology
+from common.telemetry import add_real_kpis
+from producer import data_prep, integrity, topology
 
 log = logging.getLogger("producer.kpi_model")
 
@@ -85,14 +86,6 @@ def load_params(path: Path | None = None) -> Params:
         if domain.kpi(name).source is not KpiSource.MODELED:
             raise ValueError(f"KPI {name!r} is not marked modeled in kpis.yaml")
     return params
-
-
-def add_real_kpis(frame: pl.DataFrame) -> pl.DataFrame:
-    """Add each real KPI as the sum of its Milan fields (mapping from `kpis.yaml`)."""
-    real = [k for k in load_domain().kpis.values() if k.source is KpiSource.REAL]
-    return frame.with_columns(
-        pl.sum_horizontal(*[pl.col(f) for f in k.milan_fields]).alias(k.name) for k in real
-    )
 
 
 def calibrate(
@@ -187,12 +180,7 @@ def run(data_dir: Path, params_path: Path | None = None) -> dict[str, Any]:
     cells = topology.load_cells(nodes)
     params = load_params(params_path)
 
-    train = set(splits.days(splits.Split.TRAIN))
-    paths = {
-        date.fromisoformat(p.stem): p
-        for p in sorted((processed / "traffic").glob("*.parquet"))
-        if date.fromisoformat(p.stem) in train  # validation/test files are never read here
-    }
+    paths = data_prep.processed_days(data_dir, splits.Split.TRAIN)
     if not paths:
         raise FileNotFoundError(
             "no processed training days (2013-11-04 onwards) in data/processed/traffic: "
