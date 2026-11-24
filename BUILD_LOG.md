@@ -20,6 +20,32 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-23 — Milestone 2, step 3: features
+
+**What was built:**
+- New package `src/streaming/` (via the `new-package` skill; wheel + mypy lists, tests in `tests/streaming/`).
+- `streaming/baseline.py` + `make baseline`: seasonal mean/std per (cell, weekday, hour, Europe/Rome) for every real and MODELED KPI, from the clean training weeks (Rule 7: `fit` refuses any non-training local day); gap rows left out; std floored (`features.yaml`). Writes `data/processed/baseline.parquet` + `.meta.json` (training days, traffic hashes, and the baseline's provenance: feature config, KPI catalog entries, KPI-model params, calibration and topology hashes). `baseline.load` refuses a missing or **stale** baseline.
+- `streaming/features.py` + `features.yaml`: causal features per cell and KPI: `_z` (clipped ±20), `_bad` (oriented by the KPI's bad direction), `_z_mean_3`, `_z_mean_6` (time-based windows: a missing interval shortens the window), `_z_delta` (null unless the previous interval exists). No features on gap rows; windows skip them. Imports only `common`, so the Spark job (Step 8) can call it.
+- `streaming/features_check.py` + `make features ARGS="--split validation --inject"`: computes a split's features, reports rows, time, peak memory; `--inject` only with validation; writes nothing.
+- Shared pieces moved instead of copied: `common.telemetry.INTERVAL`, `LOCAL_TZ`, `add_real_kpis` (were in `producer.injector`, `producer.milan`, `producer.kpi_model`); `data_prep.processed_days` (calibration, baseline, and replay now find processed days one way); `tests/factories.telemetry_frame`. `replay.telemetry_for` now raises `ReplayError` for injector failures, because packages outside `producer` may not import the injector (Rule 6).
+
+**Review (before verification):**
+- `/simplify`, 4 reviewers. Applied: the shared constants/helpers above; CLI split out of `features.py` (it pulled the producer and, through `replay`, the injector into the feature code); z computed before the sort; unused per-bucket `n` dropped; `PositiveInt` windows; one time-zone expression; test factory shared. Skipped: per-cell `.over()` and baseline-join optimizations (matter only for Step 8, profile then); a `topology_nodes.csv` constant (pre-existing literal in 4 producer files).
+- `/code-review` (medium), 7 findings: **important, fixed:** features silently used a baseline fitted under an older calibration/config (now a provenance check in `baseline.load`). Nits fixed: injector errors escaped as tracebacks; `make features` needed every split day while `make baseline` used the days present; `--split train --inject` allowed; sidecar missed KPI-model params; a test name mangled by my own find-and-replace. Rejected: "`features.yaml` version not checked" (`read_yaml` already rejects any version but 1). The fixes were tested, not re-reviewed by a second `/code-review` pass.
+
+**Tests run and results:**
+- `make check`: 361 passed, coverage 90.43%.
+- Done when: `make features ARGS="--split validation --inject"` → 14 days + 57 SYNTHETIC faults, 290,304 rows × 30 features, features 0.3 s (whole run ~1 s), peak memory 376–415 MiB. Training weeks: 580,608 rows, 0.7 s, 663 MiB. Baseline: 24,192 buckets = 144 × 7 × 24.
+- Injection check: 5,421 rows' features differ between clean and injected validation (injector changed 5,425 cell-intervals).
+- `make calibrate` after the `processed_days` refactor: `kpi_calibration.json` byte-identical (sha256 `c11f1bd8…`), so the baseline stays current.
+
+**Found:** a real December **internet level shift**: from 2013-12-03/04, 18/144 cells drop below 60% of their November internet level and stay there (voice unchanged). On clean validation days `traffic_internet_bad > 3` on 10.7% of rows. Recorded as a known risk; handling is an open decision.
+
+**Open items:**
+- Decide how to treat the internet level shift before tuning (Step 6); options in `DECISIONS.md`.
+- Step 8: per-cell `compute` cost (baseline join per call, `.over()` per call) to profile.
+- A direct read of `data/processed/traffic/*.parquet` in an ad-hoc analysis was blocked by Claude Code's auto-mode classifier; the same view through `replay.telemetry_for` was allowed.
+
 ## 2026-11-23 — Milestone 2, step 2: fault injector + ground-truth log
 
 **What was built:**

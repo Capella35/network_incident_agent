@@ -39,7 +39,7 @@ from pydantic import ValidationError
 from common import kafka, splits, telemetry
 from common.db import DbConfigError, DbSettings, Role
 from common.telemetry import TelemetryMessage
-from producer import injector, kpi_model, topology
+from producer import data_prep, injector, kpi_model, topology
 
 log = logging.getLogger("producer.replay")
 
@@ -68,10 +68,10 @@ def days_in_range(start: date, end: date, final_eval: bool = False) -> list[date
 
 
 def load_traffic(data_dir: Path, days: Iterable[date]) -> pl.DataFrame:
-    traffic_dir = data_dir / "processed" / "traffic"
+    paths = data_prep.Paths(data_dir)
     frames = []
     for d in days:
-        path = traffic_dir / f"{d.isoformat()}.parquet"
+        path = paths.traffic_day(d)
         if not path.exists():
             raise ReplayError(f"{d} not processed: download it and run `make data`")
         frames.append(pl.read_parquet(path))
@@ -304,10 +304,13 @@ def telemetry_for(
         if split is None or any(splits.split_of(d) is not split for d in days):
             raise ReplayError("--inject: the replayed days must all be in one split")
         cfg = injector.load_config()
-        faults, events, fingerprint = injector.for_days(
-            split, days, index, cfg, final_eval=final_eval
-        )
-        injector.check_schedule(processed, split, cfg, fingerprint)
+        try:
+            faults, events, fingerprint = injector.for_days(
+                split, days, index, cfg, final_eval=final_eval
+            )
+            injector.check_schedule(processed, split, cfg, fingerprint)
+        except injector.InjectorError as exc:  # callers outside producer can't import injector
+            raise ReplayError(str(exc)) from exc
     fx = injector.effects(faults, {c: sq for sq, c in cells.items()}) if faults else None
     rows, rejects = build_rows(
         load_traffic(data_dir, days),

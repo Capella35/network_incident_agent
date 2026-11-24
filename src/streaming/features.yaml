@@ -1,0 +1,11 @@
+# Per-cell detection features (milestone 2, step 3; specs/03-detection.md).
+# KPIs come from common/domain/kpis.yaml; every real and modeled KPI gets the same features.
+version: 1
+
+windows: [3, 6]        # rolling-mean lengths, in 10-minute intervals (the current one included)
+
+baseline:              # seasonal mean/std per cell, weekday, and hour (Europe/Rome), training weeks
+  std_floor_abs: 1.0e-6     # a near-constant KPI must not turn noise into huge z-scores
+  std_floor_rel: 0.05       # std >= this fraction of |mean|
+
+z_clip: 20.0           # |z| is capped: an outage (traffic 0) is "very bad", not infinitely bad

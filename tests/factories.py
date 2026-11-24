@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
+
+import polars as pl
 
 from common import telemetry
 from common.telemetry import TelemetryMessage
@@ -38,3 +41,29 @@ def message_grid(run: str, n_cells: int, n_intervals: int) -> list[TelemetryMess
         for c in range(1, n_cells + 1)
     ]
     return sorted(msgs, key=lambda m: (m.interval_start, m.cell_id))
+
+
+def telemetry_frame(
+    n_cells: int = 1, n_intervals: int = 12, *, gaps: Iterable[int] = (), drop: Iterable[int] = ()
+) -> pl.DataFrame:
+    """`message_grid` as rows shaped like `producer.replay.telemetry_for` output (no run ID).
+    `gaps`: interval indexes flagged as data gaps (modeled KPIs null, like the replay);
+    `drop`: interval indexes removed entirely (no row at all)."""
+    frame = pl.DataFrame(
+        [
+            m.model_dump(exclude={"schema_version", "replay_run_id"})
+            for m in message_grid("r", n_cells, n_intervals)
+        ]
+    ).with_columns((pl.col("interval_start").rank("dense") - 1).alias("_i"))
+    gap = pl.col("_i").is_in(list(gaps))
+    return (
+        frame.with_columns(
+            gap.alias("data_gap"),
+            *[
+                pl.when(gap).then(None).otherwise(pl.col(c)).alias(c)
+                for c in telemetry.MODELED_FIELDS
+            ],
+        )
+        .filter(~pl.col("_i").is_in(list(drop)))
+        .drop("_i")
+    )

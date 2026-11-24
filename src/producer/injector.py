@@ -29,7 +29,7 @@ import sys
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass, replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
@@ -45,7 +45,7 @@ from producer import manifest, milan, topology
 
 log = logging.getLogger("producer.injector")
 
-INTERVAL = timedelta(minutes=telemetry.INTERVAL_MINUTES)
+INTERVAL = telemetry.INTERVAL
 GROUND_TRUTH_DIR = "ground_truth"  # under data/processed/; read only by src/evaluation/
 CHANGE_DESCRIPTION = "Configuration change (SYNTHETIC)"
 _MAX_TRIES = 200  # placement attempts per fault before giving up on that slot

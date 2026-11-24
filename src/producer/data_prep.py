@@ -17,6 +17,7 @@ from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
+from common import splits
 from producer import grid, integrity, manifest, milan
 
 log = logging.getLogger("producer.data_prep")
@@ -32,6 +33,16 @@ class Paths:
         self.traffic = self.processed / "traffic"
         self.subset = self.processed / "subset.json"
         self.manifest = data_dir / "manifest.json"
+
+    def traffic_day(self, day: date) -> Path:
+        return self.traffic / f"{day.isoformat()}.parquet"
+
+
+def processed_days(data_dir: Path, split: splits.Split) -> dict[date, Path]:
+    """The split's days that are processed on disk, with their traffic files, in date order.
+    Only that split's files are looked at (Rule 7)."""
+    paths = Paths(data_dir)
+    return {d: p for d in splits.days(split) if (p := paths.traffic_day(d)).exists()}
 
 
 def _now() -> str:

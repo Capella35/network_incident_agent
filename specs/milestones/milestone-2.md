@@ -37,11 +37,12 @@ Detection is built **offline first and streamed second**. All feature and model 
 - **Done when:** a validation schedule is generated, applied to the 14 validation days, and spot-checked against the ground truth (e.g., a site-power fault shows all three sector cells at ~0 for exactly its window).
 - **Verified 2026-11-23:** `make inject ARGS="--split validation"` → 57 SYNTHETIC faults (site_power 17, congestion 12, cell_outage 11, config_push 9, backhaul 8), fingerprint `62d292f4…`. Applied to all 14 validation days through `replay.telemetry_for` (the one assembly path for the replay and offline code): of 290,304 rows exactly the 5,425 cell-intervals inside fault windows changed, 0 mismatches against multipliers computed independently from the ground-truth file; spot check SITE-7 site_power: all 3 cells ×0.038 for exactly its 9 intervals. `make replay ARGS="--start 2013-12-02 --speed 0 --inject"`: 3 faults, 4 change events in Postgres, schedule matched its ground truth, 20,736 sent/sunk. Design changes from review: `--inject` is a flag (split from the days); `telemetry_for` never returns the faults (Rule 6; `producer.injector` importable only by `producer`/`evaluation`); the ground-truth sidecar holds a schedule fingerprint that the replay checks; the topology index moved to `topology.Index`.
 
-### Step 3 — Features (~2 h)
+### Step 3 — Features (~2 h) — *done 2026-11-23*
 - `src/streaming/features.py` (pure Python, polars): per-cell, **causal** features (interval *t* uses only ≤ *t*): rolling means over a window, deviation from a **seasonal baseline** (same hour of day and weekday, Europe/Rome), rate of change, per KPI from the catalog (bad direction respected). Data gaps produce no features (no alarm on a gap).
 - Seasonal baseline fitted on training weeks only (`splits.require(day, TRAIN)`) → `data/processed/baseline.parquet` (`make baseline`).
 - **Tests:** causality (changing the future never changes the past); gap handling; determinism; KPI names only from `kpis.yaml`.
 - **Done when:** features for all 14 validation days computed in < 1 min and memory < 1 GB.
+- **Verified 2026-11-23:** `make baseline` → 24,192 buckets (144 cells × 7 weekdays × 24 hours) from the 28 training days, clean. `make features ARGS="--split validation --inject"` → 14 days + 57 SYNTHETIC faults, 290,304 rows × 30 features (6 KPIs × z, bad, mean over 3 and 6 intervals, delta), features **0.3 s**, whole run ~1 s, peak memory **376–415 MiB**; training weeks 580,608 rows, 0.7 s, 663 MiB. Under injection exactly 5,421 rows' features change (the injector changed 5,425 cell-intervals; 4 stay equal after clipping). `streaming.features` imports only `common` (checked), so the Spark job can call it. Reviewed with `/simplify` (4 reviewers) and `/code-review` (7 findings; 1 important, fixed: a stale baseline was used silently).
 
 ### Step 4 — Detector candidates (~2.5 h)
 - `src/models/`: one interface (`fit(train_features)`, `score(features) -> scores`, `alarms(scores, threshold)`), three candidates:
@@ -106,6 +107,7 @@ Detection is built **offline first and streamed second**. All feature and model 
 | MLflow client | `mlflow-skinny` pinned to the server's version (3.17.2) | Client/server match; lighter than full `mlflow` |
 
 ### Known risks
+- **Real internet level shift in December (found in Step 3):** from 2013-12-03/04, 18 of 144 cells carry < 60% of their November internet traffic for the rest of the validation weeks (31 cells < 80%); voice is unchanged (1 cell < 60%). Example CELL-7-1: ~950 → ~330 per weekday. Real, unlabeled data behavior, not an injected fault: on clean validation days `traffic_internet_bad > 3` on 10.7% of rows (training's last week: ~0%). Unhandled, these cells alarm all day and will dominate false incidents/day in Steps 4–6. How to handle it is open (see `DECISIONS.md`).
 - **Milan holidays in validation week 1** (Sat 2013-12-07 Sant'Ambrogio, Sun 12-08 Immaculate Conception): real, unlabeled anomalies; they will cost false alarms. Useful as a realism check, not something to tune away.
 - **Busy peaks:** 0.23% of training rows already have `load_ratio` > 0.9; the seasonal baseline must absorb them.
 - **Tuning and reporting on the same validation weeks** gives optimistic M2 numbers; the honest numbers come once, from test weeks, at M6.
@@ -116,4 +118,4 @@ Correlation and root-node ranking (M3, beyond the provisional grouping), classif
 
 ## Status
 
-Plan confirmed 2026-11-23. Step 2 done 2026-11-23 (seeded injector, ground truth + fingerprint, `replay --inject`, change events). Step 1 done 2026-11-23 (fault types, separate signatures, import/name boundaries for Rules 6 and 15, `change_events`). Next: Step 3 (features). Data ready: all training and validation weeks processed and calibrated (2026-11-22).
+Plan confirmed 2026-11-23. Step 3 done 2026-11-23 (seasonal baseline, causal features, stale-baseline check; real December internet level shift found). Step 2 done 2026-11-23 (seeded injector, ground truth + fingerprint, `replay --inject`, change events). Step 1 done 2026-11-23 (fault types, separate signatures, import/name boundaries for Rules 6 and 15, `change_events`). Next: Step 4 (detector candidates), after the user decides how to treat the December internet level shift. Data ready: all training and validation weeks processed and calibrated (2026-11-22).

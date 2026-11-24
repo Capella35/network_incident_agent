@@ -14,9 +14,11 @@ list and the modeled-KPI catalog stay the single source (Rule 15).
 from __future__ import annotations
 
 import math
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Annotated, Literal
+from zoneinfo import ZoneInfo
 
+import polars as pl
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from common.domain import load_domain
@@ -26,6 +28,8 @@ SCHEMA_VERSION: Literal[1] = 1
 TOPIC_RAW = "telemetry.raw"  # created by infra/kafka/create-topics.sh
 TOPIC_DLQ = "telemetry.dlq"
 INTERVAL_MINUTES = 10
+INTERVAL = timedelta(minutes=INTERVAL_MINUTES)
+LOCAL_TZ = ZoneInfo("Europe/Rome")  # the network's local time: Milan days, seasonal buckets
 
 _Activity = Annotated[float, Field(ge=0.0, allow_inf_nan=False)]
 _Modeled = Annotated[float | None, Field(default=None, ge=0.0, allow_inf_nan=False)]
@@ -101,6 +105,14 @@ class TelemetryMessage(BaseModel):
 def message_key(cell_id: str, interval_start: datetime) -> str:
     """Kafka key `cell_id|interval_start` (UTC, ISO 8601): one key per cell and interval."""
     return f"{cell_id}|{interval_start.astimezone(UTC).strftime('%Y-%m-%dT%H:%M:%SZ')}"
+
+
+def add_real_kpis(frame: pl.DataFrame) -> pl.DataFrame:
+    """Add each real KPI as the sum of its Milan fields (mapping from `kpis.yaml`)."""
+    real = [k for k in load_domain().kpis.values() if k.source is KpiSource.REAL]
+    return frame.with_columns(
+        pl.sum_horizontal(*[pl.col(f) for f in k.milan_fields]).alias(k.name) for k in real
+    )
 
 
 def check_against_domain() -> None:
