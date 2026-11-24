@@ -300,6 +300,9 @@ def test_ground_truth_file_and_sidecar(
     assert meta["faults"] == len(faults) and meta["seed"] == cfg.seeds[VAL]
 
 
-def test_main_refuses_test_split(caplog: pytest.LogCaptureFixture) -> None:
+def test_main_refuses_test_split(
+    caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch, index: topology.Index
+) -> None:
+    monkeypatch.setattr(inj.topology, "load_index", lambda _processed: index)
     assert inj.main(["--split", "test"]) == 1
     assert "final numbers" in caplog.text
