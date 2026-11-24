@@ -303,6 +303,11 @@ def read_yaml(path: Path | Any) -> dict[str, Any]:
     return data
 
 
+def read_config(model: type[M], path: Path | Any) -> M:
+    """A versioned YAML config (`read_yaml`) validated as `model`, the `version` key dropped."""
+    return model(**{k: v for k, v in read_yaml(path).items() if k != "version"})
+
+
 def load_domain_from(directory: Path | Any) -> Domain:
     """Load and validate the domain model from a directory holding the YAML files."""
     ent_raw = read_yaml(directory / "entities.yaml")

@@ -9,6 +9,7 @@ import polars as pl
 
 from common import telemetry
 from common.telemetry import TelemetryMessage
+from streaming import features
 
 T0 = datetime(2013, 11, 5, tzinfo=UTC)  # a training day, on the 10-minute grid
 
@@ -66,4 +67,20 @@ def telemetry_frame(
         )
         .filter(~pl.col("_i").is_in(list(drop)))
         .drop("_i")
+    )
+
+
+def flat_baseline(cells: Iterable[str], mean: float = 1.0, std: float = 0.5) -> pl.DataFrame:
+    """Every (weekday, hour) bucket for `cells`, each KPI with the same mean and std."""
+    buckets = [(c, wd, h) for c in cells for wd in range(1, 8) for h in range(24)]
+    frame = pl.DataFrame(
+        buckets,
+        schema=list(features.BUCKET),
+        orient="row",
+        schema_overrides={"weekday": pl.Int8, "hour": pl.Int8},
+    )
+    kpis = features.feature_kpis()
+    return frame.with_columns(
+        *[pl.lit(mean).alias(f"{k.name}_mean") for k in kpis],
+        *[pl.lit(std).alias(f"{k.name}_std") for k in kpis],
     )

@@ -44,7 +44,7 @@ Detection is built **offline first and streamed second**. All feature and model 
 - **Done when:** features for all 14 validation days computed in < 1 min and memory < 1 GB.
 - **Verified 2026-11-23:** `make baseline` → 24,192 buckets (144 cells × 7 weekdays × 24 hours) from the 28 training days, clean. `make features ARGS="--split validation --inject"` → 14 days + 57 SYNTHETIC faults, 290,304 rows × 30 features (6 KPIs × z, bad, mean over 3 and 6 intervals, delta), features **0.3 s**, whole run ~1 s, peak memory **376–415 MiB**; training weeks 580,608 rows, 0.7 s, 663 MiB. Under injection exactly 5,421 rows' features change (the injector changed 5,425 cell-intervals; 4 stay equal after clipping). `streaming.features` imports only `common` (checked), so the Spark job can call it. Reviewed with `/simplify` (4 reviewers) and `/code-review` (7 findings; 1 important, fixed: a stale baseline was used silently).
 
-### Step 4 — Detector candidates (~2.5 h)
+### Step 4 — Detector candidates (~2.5 h) — *done 2026-11-24*
 - `src/models/`: one interface (`fit(train_features)`, `score(features) -> scores`, `alarms(scores, threshold)`), three candidates:
   1. **Seasonal z-score** (the baseline);
   2. **Isolation Forest** (scikit-learn) on multi-KPI windows;
@@ -52,6 +52,7 @@ Detection is built **offline first and streamed second**. All feature and model 
 - Trained on **clean training weeks** only; saved as MLflow models.
 - **Tests:** fit/score on hand-made fixtures; a planted anomaly scores above normal; deterministic with a seed; alarms carry the contributing KPIs.
 - **Done when:** each candidate trains on the 28 training days within its memory budget and scores a validation day.
+- **Verified 2026-11-24:** `make candidates` (one process per candidate, budget 1,536 MiB fixed in `detectors.yaml` before measuring): zscore 881 MiB, iforest 895 MiB, autoencoder 926 MiB; each trained on 580,608 rows (28 clean training days; features 2.5 s, fit 0.007 / 0.36 / 4.5 s) and scored 2013-12-02 (20,736 rows, SYNTHETIC faults injected); each logged to MLflow `detector-candidates` as a pyfunc model that reloads and scores like the detector (test). Also done here (user's decision 2026-11-24, option b): real KPIs' z is level-adjusted over the previous 7 days; clean validation week 2 internet `bad > 3` 12.2% → 1.6%. Reviewed with `/simplify` (4 reviewers) and `/code-review` (4 important findings fixed).
 
 ### Step 5 — Evaluation (~2 h)
 - `src/evaluation/`: ground-truth reader (the only one); **matching** per `specs/09-evals.md` (overlap ± 1 interval); metrics: detection rate (overall, per fault type), median detection delay (intervals), false incidents per day.
@@ -76,13 +77,13 @@ Detection is built **offline first and streamed second**. All feature and model 
 
 ### Step 8 — Spark streaming job (~3 h)
 - **Own Spark image** (`infra/spark/Dockerfile`): pinned Python 3.11 base, Java 17, PySpark 4.2.1, the Kafka connector jar (pinned version + checksum), and this package installed from `uv.lock`. Reason: the stock Spark image ships Python 3.10; the laptop has Java 8 (Spark 4 needs 17).
-- `src/streaming/job.py`: reads `telemetry.raw`; `applyInPandasWithState` per cell keeps the last *W* intervals and calls the Step 3 features and the champion model (loaded from MLflow); writes alarms to Kafka `alarms` and Postgres `alarms`; checkpointing; a heartbeat row per micro-batch.
+- `src/streaming/job.py`: reads `telemetry.raw`; `applyInPandasWithState` per cell keeps the last *W* intervals **plus the level-factor state (per cell and hour: the last 7 local days' actual and baseline-mean sums, ~170 numbers per KPI; found in Step 4)** and calls the Step 3 features and the champion model (loaded from MLflow); writes alarms to Kafka `alarms` and Postgres `alarms`; checkpointing; a heartbeat row per micro-batch.
 - Alarm schema in `src/common/alarms.py` (`ALM-<uuid>`, deterministic from run, cell, interval, model version; KPIs, score, detector version) and `specs/03-detection.md` updated.
 - Compose: the job under the `spark` profile, memory ≤ 1.5 GiB (R1); `alarms` topic with bounded retention (R2).
 - **Done when:** the job runs against a replay without errors, restarts from its checkpoint without duplicate alarms, and stays within its memory limit.
 
 ### Step 9 — Parity and end-to-end check (~1.5 h) — *the milestone's Done when*
-- Replay one validation day with injected faults; compare the Spark job's alarms with the offline scoring of the same day: **identical alarm keys and scores** (tolerance 0). Then run the Step 5 report on the streamed alarms: it must equal the offline report.
+- Replay one validation day with injected faults, **preceded by its 7 history days under the same rule as `streaming.offline.features_for`** (earlier split clean, same split injected), so level factors match; compare the Spark job's alarms with the offline scoring of the same day: **identical alarm keys and scores** (tolerance 0). Then run the Step 5 report on the streamed alarms: it must equal the offline report.
 - `make detect-check` (like `make replay-check`).
 
 ### Step 10 — Health, cleanup, dashboards (~1.5 h)
@@ -118,4 +119,4 @@ Correlation and root-node ranking (M3, beyond the provisional grouping), classif
 
 ## Status
 
-Plan confirmed 2026-11-23. Step 3 done 2026-11-23 (seasonal baseline, causal features, stale-baseline check; real December internet level shift found). Step 2 done 2026-11-23 (seeded injector, ground truth + fingerprint, `replay --inject`, change events). Step 1 done 2026-11-23 (fault types, separate signatures, import/name boundaries for Rules 6 and 15, `change_events`). Next: Step 4 (detector candidates), after the user decides how to treat the December internet level shift. Data ready: all training and validation weeks processed and calibrated (2026-11-22).
+Plan confirmed 2026-11-23. Step 4 done 2026-11-24. Step 3 done 2026-11-23 (seasonal baseline, causal features, stale-baseline check; real December internet level shift found). Step 2 done 2026-11-23 (seeded injector, ground truth + fingerprint, `replay --inject`, change events). Step 1 done 2026-11-23 (fault types, separate signatures, import/name boundaries for Rules 6 and 15, `change_events`). Step 4 done 2026-11-24 (three candidates behind one interface, MLflow pyfunc models, memory budget checked before logging; level-adjusted z for real KPIs, the user's option b). Next: Step 5 (evaluation). Data ready: all training and validation weeks processed and calibrated (2026-11-22).

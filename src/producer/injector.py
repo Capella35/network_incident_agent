@@ -40,7 +40,7 @@ from pydantic import Field, model_validator
 
 from common import splits, telemetry
 from common.domain import load_domain
-from common.domain.loader import FrozenModel, read_yaml
+from common.domain.loader import FrozenModel, read_config
 from producer import manifest, milan, topology
 
 log = logging.getLogger("producer.injector")
@@ -94,8 +94,7 @@ class Config(FrozenModel):
 
 
 def load_config(path: Path | None = None) -> Config:
-    raw = read_yaml(path or files("producer").joinpath("injector_config.yaml"))
-    return Config(**{k: v for k, v in raw.items() if k != "version"})
+    return read_config(Config, path or files("producer").joinpath("injector_config.yaml"))
 
 
 # --- Schedule --------------------------------------------------------------------------------

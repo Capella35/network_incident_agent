@@ -1,4 +1,4 @@
-.PHONY: help setup lint format typecheck test check data topology calibrate baseline features inject clean \
+.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates inject clean \
 	env-check up down ps logs spark-smoke db-migrate db-topology replay sink replay-check dashboards \
 	test-integration
 
@@ -50,6 +50,12 @@ baseline:  ## Fit the seasonal KPI baseline (cell, weekday, hour) on processed t
 
 features:  ## Compute detection features for a split and report time + memory (ARGS="--split validation --inject")
 	uv run python -m streaming.features_check $(ARGS)
+
+candidates: env-check  ## Train each detector candidate (own process: memory budget), score a validation day, log to MLflow (ARGS="--score-day 2013-12-02")
+	@cands=$$(uv run python -c 'from models.detectors import CANDIDATES; print(*CANDIDATES)') && test -n "$$cands" || { echo "could not list the detector candidates"; exit 1; }; \
+	for c in $$cands; do \
+		$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m models.candidates --candidate $$c $(ARGS) || exit 1; \
+	done
 
 inject:  ## Write a split's SYNTHETIC fault schedule (ground truth, for evaluation) (ARGS="--split validation")
 	uv run python -m producer.injector $(ARGS)

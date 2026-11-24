@@ -45,6 +45,15 @@ def processed_days(data_dir: Path, split: splits.Split) -> dict[date, Path]:
     return {d: p for d in splits.days(split) if (p := paths.traffic_day(d)).exists()}
 
 
+def require_processed_days(data_dir: Path, split: splits.Split) -> dict[date, Path]:
+    """`processed_days`, but at least one: raises FileNotFoundError naming the fix."""
+    if days := processed_days(data_dir, split):
+        return days
+    raise FileNotFoundError(
+        f"no processed {split} days in {Paths(data_dir).traffic}: run `make data`"
+    )
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 

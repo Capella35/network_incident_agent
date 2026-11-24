@@ -1,0 +1,26 @@
+# Detector candidates (milestone 2, step 4; specs/03-detection.md). Defaults only: Optuna tunes
+# them on validation weeks in step 6. Seeds make every fit and score repeatable.
+version: 1
+
+seed: 20131104
+
+# Peak resident memory of the whole training process (features + fit), per candidate. Set before
+# measuring (8 GB laptop, Docker stack ~2.9 GiB of limits running alongside).
+memory_budget_mib: 1536
+
+alarm:
+  kpi_share: 0.5   # an alarm lists the KPIs contributing at least this share of the top one
+  max_kpis: 3
+
+candidates:
+  zscore: {}       # no parameters: score = worst bad-direction z across KPIs
+
+  iforest:
+    n_estimators: 200
+    max_samples: 256
+    max_train_rows: 51200    # seeded sample; n_estimators x max_samples rows is all the trees draw
+
+  autoencoder:
+    hidden: 8                # bottleneck size (inputs: every feature column)
+    max_iter: 30
+    max_train_rows: 100000
