@@ -76,9 +76,7 @@ def fit(rows: pl.DataFrame, cfg: Config) -> pl.DataFrame:
 def run(data_dir: Path) -> Path:
     """Fit on every processed training day present; write the baseline and its sidecar."""
     processed = data_dir / "processed"
-    paths = data_prep.processed_days(data_dir, splits.Split.TRAIN)
-    if not paths:
-        raise FileNotFoundError("no processed training days in data/processed: run `make data`")
+    paths = data_prep.require_processed_days(data_dir, splits.Split.TRAIN)
     days = list(paths)
     cfg = load_config()
     base = fit(replay.telemetry_for(data_dir, days).rows, cfg)

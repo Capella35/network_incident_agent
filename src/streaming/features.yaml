@@ -8,4 +8,8 @@ baseline:              # seasonal mean/std per cell, weekday, and hour (Europe/R
   std_floor_abs: 1.0e-6     # a near-constant KPI must not turn noise into huge z-scores
   std_floor_rel: 0.05       # std >= this fraction of |mean|
 
+level:                 # recent-level factor for real KPIs' z (DECISIONS.md 2026-11-24)
+  days: 7               # same hour of day over the previous 7 local days
+  min_days: 3           # less history than this: plain seasonal z
+
 z_clip: 20.0           # |z| is capped: an outage (traffic 0) is "very bad", not infinitely bad

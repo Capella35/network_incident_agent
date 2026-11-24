@@ -117,4 +117,4 @@ def test_load_missing(tmp_path: Path) -> None:
 
 def test_main_without_training_days(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     assert baseline.main(["--data-dir", str(_data_dir(tmp_path, ["2013-12-02"]))]) == 1
-    assert "no processed training days" in caplog.text
+    assert "no processed train days" in caplog.text

@@ -7,6 +7,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
+from common import splits
 from producer import data_prep, integrity
 from tests.producer.conftest import DAY, DAY_START_MS, tsv_row, write_grid
 
@@ -86,3 +87,13 @@ def test_delete_raw(data_dir: Path) -> None:
 
 def test_missing_requested_date(data_dir: Path) -> None:
     assert data_prep.main(["--data-dir", str(data_dir), "--date", "2013-12-01"]) == 1
+
+
+def test_require_processed_days_names_the_fix(tmp_path: Path) -> None:
+    with pytest.raises(FileNotFoundError, match=r"no processed validation days.*make data"):
+        data_prep.require_processed_days(tmp_path, splits.Split.VALIDATION)
+    paths = data_prep.Paths(tmp_path)
+    paths.traffic.mkdir(parents=True)
+    day = splits.days(splits.Split.VALIDATION)[0]
+    paths.traffic_day(day).write_bytes(b"stub")
+    assert list(data_prep.require_processed_days(tmp_path, splits.Split.VALIDATION)) == [day]

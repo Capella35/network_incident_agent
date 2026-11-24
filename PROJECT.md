@@ -139,6 +139,7 @@ Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a 
 | 2026-11-22 | **Numbered `specs/` folder** (`00-overview` … `09-evals` + `milestones/`): one spec per product behavior, read in order. `docs/` folded in (architecture → 00, domain model → 01, data sources + telemetry message → 02, incident record → 04, guardrails → 08); Definition of done moved to `00-overview.md`; `evals/eval-plan.md` → `09-evals.md`; new 03, 05, 06, 07 assembled from this charter and the README. Supersedes the 2026-11-14 `docs/milestones/` entry. |
 | 2026-11-22 | `HANDOFF.md` moved to `specs/HANDOFF.md` (user's choice), next to the milestone plans it tracks. Still read first in every session and updated last. |
 | 2026-11-22 | **Milestone 1 done:** replay → Kafka → Postgres → Grafana, reproducible (`make replay-check` → MATCH on training week 1); all M1 guardrails pass; ODbL attribution links applied as the publisher words them. Details in `DECISIONS.md` and `BUILD_LOG.md`. |
+| 2026-11-24 | **December internet level shift:** option (b), real KPIs' z adjusted to the cell's recent 7-day level (user's choice); MODELED KPIs unchanged. |
 | 2026-11-23 | **Branch + pull request workflow:** every change reaches `main` through a short-lived branch and a pull request with passing CI; no integration branch. Reason: a direct push bypassed CI and broke `main`. |
 
 ## Still open
@@ -150,4 +151,7 @@ Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a 
 - **SYNTHETIC runbooks + `get_runbook` tool (M5):** cited by the agent, passed as data.
 - **Concurrent investigations (M5):** one agent run per incident, severity queue, shared global budget; possible `related_open_incidents` tool.
 - **Class imbalance in the incident classifier (M4):** per-class metrics and macro-F1, class weights, more training-split faults; validation/test keep their natural mix; watch `no_fault`.
+- **Detection delay with censoring (M2 Steps 5–6):** Kaplan–Meier time-to-detection (missed and window-cut faults censored); Step 6 optimises the KM median.
+- **Skewed KPI deviations (M2 Step 6):** `log1p` for real KPIs, empirical tail z for modeled KPIs; not per-bucket median/MAD (too few samples).
+- **Severity from load (M4):** latency and drop rate saturate under overload; use `load_ratio`.
 - **MCP wrapper for agent tools:** decide after Milestone 5's quality bar is met.
