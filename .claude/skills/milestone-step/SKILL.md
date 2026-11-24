@@ -1,17 +1,18 @@
 ---
 name: milestone-step
-description: Build one step of the current milestone end to end — read specs/HANDOFF.md, plan against the step's "Done when", build with tests, run make check, check guardrails, then update specs/HANDOFF.md / BUILD_LOG.md / docs and propose a commit. Use when the user says "next step", "do step N", "continue the milestone", or starts a build session.
+description: Build one step of the current milestone end to end — read specs/HANDOFF.md, plan against the step's "Done when", build with tests, run make check, check guardrails, then update specs/HANDOFF.md / BUILD_LOG.md / docs, commit on a step branch, and open a pull request when asked. Use when the user says "next step", "do step N", "continue the milestone", or starts a build session.
 ---
 
 # Milestone step
 
-One step of `specs/milestones/milestone-N.md`, from handoff to commit. The step is done only when its **Done when** line is met and verified, not when the code is written.
+One step of `specs/milestones/milestone-N.md`, from handoff to pull request. The step is done only when its **Done when** line is met and verified, not when the code is written.
 
 ## 1. Orient (read before touching anything)
 1. `specs/HANDOFF.md`: current state, **Next step**, **Blocked on**. If it is blocked, stop and tell the user.
 2. The current milestone file: the step's bullets, its **Done when**, the **Guardrails due this milestone**, and **Out of scope**.
 3. Only the docs the step names (e.g., `specs/02-telemetry.md`, `specs/01-domain-model.md`, `specs/09-evals.md`). Don't read the whole repo.
 4. `git status`: if there is uncommitted work from an earlier step, say so and ask whether to finish or commit it first. Never mix two steps in one commit.
+5. Branch from an up-to-date `main` before changing anything: `git switch main && git pull --ff-only && git switch -c mN/step-K-<short-slug>` (e.g. `m2/step-3-features`). Never commit a step on `main`.
 
 ## 2. Plan (short, in chat)
 - Restate the step in 3–6 bullets: files to add/change, tests to add, how **Done when** will be verified.
@@ -50,10 +51,12 @@ Update, in this order:
 
 Use absolute dates (today's date), never "yesterday" or "last week".
 
-## 6. Commit (only when the user says so)
-- Propose one commit per step: `Milestone N step K: <short title>`. Show the file list first.
+## 6. Commit and pull request (only when the user says so)
+- Propose one commit per step on the step branch: `Milestone N step K: <short title>`. Show the file list first.
 - Never `--no-verify`; if gitleaks or ruff fails, fix the cause.
-- Don't push unless asked; `main` is branch-protected.
+- When the user says to push: push the step branch and open a pull request into `main` (`gh pr create`), titled like the commit, with the **Done when** evidence and the `make check` line in the body.
+- Wait for CI on the pull request (`gh pr checks --watch`). If it fails, fix the cause on the same branch, push again, and report.
+- **Never push to `main` and never merge**: the user merges (squash or rebase; `main` requires linear history and both CI checks). CI on the pull request is the check that local `make check` can't give, because CI has no `data/`.
 
 ## Report back
 End with: what was built, the `make check` line, the **Done when** evidence (or what the user must run), guardrail results, and the next step from `specs/HANDOFF.md`.
