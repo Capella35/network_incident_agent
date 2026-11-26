@@ -1,0 +1,29 @@
+# Optuna tuning (milestone 2, step 6; specs/03-detection.md). One study per candidate on the
+# validation weeks with SYNTHETIC faults injected. Feature settings stay fixed (features.yaml;
+# DECISIONS.md 2026-11-25).
+version: 1
+
+# Guardrail R4: every study stops at whichever comes first.
+budget:
+  n_trials: 40
+  timeout_s: 900
+
+# Definition of done (specs/00-overview.md): a trial above this is infeasible and never wins.
+max_false_incidents_per_day: 1.0
+
+# The alarm threshold is tuned as the share of validation cell-intervals that alarm (threshold =
+# the detector's validation-score quantile at 1 - share; logged as an absolute value for Spark).
+# Same meaning for every candidate whatever its score scale, and it reaches every score up to the
+# highest (a training-score quantile could not: on 2026-11-25 its 1e-5 tail, z 8.6, still gave
+# 22 false incidents/day). Faults cover ~1.9% of validation cell-intervals.
+alarm_share: [1.0e-5, 5.0e-2]   # searched on a log scale
+
+# Integer ranges per candidate parameter (detectors.yaml has the defaults); log: log-scale search.
+search:
+  zscore: {}
+  iforest:
+    n_estimators: {low: 50, high: 400}
+    max_samples: {low: 64, high: 2048, log: true}
+  autoencoder:
+    hidden: {low: 2, high: 24}
+    max_iter: {low: 20, high: 200}

@@ -15,6 +15,7 @@ alone never alarms. Thresholds are not chosen here: Optuna tunes them on validat
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from functools import cache
 from importlib.resources import files
 from typing import Any, ClassVar
@@ -78,12 +79,15 @@ def _matrix(frame: pl.DataFrame, columns: list[str]) -> np.ndarray:
     return frame.select(pl.when(values.is_finite()).then(values).otherwise(0.0)).to_numpy()
 
 
+def training_rows(train: pl.DataFrame, max_rows: int, seed: int) -> pl.DataFrame:
+    """Non-gap training rows, a seeded sample of at most `max_rows`: what a fit uses. Taking it
+    again from its own output returns it unchanged, so callers may sample once and fit often."""
+    rows = train.filter(~pl.col("data_gap"))
+    return rows.sample(n=max_rows, seed=seed) if rows.height > max_rows else rows
+
+
 def _train_matrix(train: pl.DataFrame, columns: list[str], max_rows: int, seed: int) -> np.ndarray:
-    """Non-gap training rows, a seeded sample of at most `max_rows`, as a matrix of `columns`."""
-    rows = train.select(*columns, "data_gap").filter(~pl.col("data_gap"))
-    if rows.height > max_rows:
-        rows = rows.sample(n=max_rows, seed=seed)
-    return _matrix(rows, columns)
+    return _matrix(training_rows(train.select(*columns, "data_gap"), max_rows, seed), columns)
 
 
 class Detector(ABC):
@@ -181,11 +185,14 @@ _CLASSES: dict[str, type[Detector]] = {c.name: c for c in (ZScore, IForest, Auto
 CANDIDATES = tuple(_CLASSES)
 
 
-def build(name: str, cfg: Config) -> Detector:
-    """A fresh, unfitted candidate by name, with its parameters from `cfg.candidates.<name>`."""
+def build(name: str, cfg: Config, overrides: Mapping[str, Any] | None = None) -> Detector:
+    """A fresh, unfitted candidate by name, with its parameters from `cfg.candidates.<name>`,
+    `overrides` (e.g. an Optuna trial's values) replacing some of them, validated."""
     if name not in _CLASSES:
         raise ValueError(f"unknown detector {name!r}; one of {sorted(_CLASSES)}")
-    return _CLASSES[name](cfg.seed, getattr(cfg.candidates, name))
+    defaults: FrozenModel = getattr(cfg.candidates, name)
+    params = type(defaults).model_validate({**defaults.model_dump(), **(overrides or {})})
+    return _CLASSES[name](cfg.seed, params)
 
 
 def alarms(scored: pl.DataFrame, threshold: float, p: AlarmParams) -> pl.DataFrame:

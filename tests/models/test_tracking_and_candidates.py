@@ -9,7 +9,7 @@ import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
 
-from common import splits
+from common import process, splits
 from models import candidates, tracking
 from models import detectors as det
 from streaming import offline
@@ -74,8 +74,8 @@ def test_run_over_budget_logs_nothing(
     normal_with_outage: pl.DataFrame,
 ) -> None:
     _fake_run_inputs(monkeypatch, train, normal_with_outage)
-    monkeypatch.setattr(candidates, "peak_rss_mib", lambda: CFG.memory_budget_mib + 1.0)
-    with pytest.raises(candidates.OverBudgetError, match="not logged"):
+    monkeypatch.setattr(process, "peak_rss_mib", lambda: CFG.memory_budget_mib + 1.0)
+    with pytest.raises(process.OverBudgetError, match="not logged"):
         candidates.run(Path("data"), "zscore", VAL_DAY)
     assert mlflow.search_experiments(filter_string=f"name = '{tracking.EXPERIMENT}'") == []
 
@@ -94,3 +94,27 @@ def test_main_reports_metrics_or_errors(
         monkeypatch.setattr(candidates, "run", lambda *_a: {"peak_rss_mib": 1.0})
         assert candidates.main(["--candidate", "zscore"]) == 0
     assert "'peak_rss_mib': 1.0" in caplog.text
+
+
+def test_logged_model_with_a_threshold_is_the_whole_alarm_rule(
+    local_mlflow: None, normal_with_outage: pl.DataFrame
+) -> None:
+    detector = det.build("zscore", CFG)
+    with mlflow.start_run() as run:
+        tracking.log_detector(detector, params={}, metrics={}, threshold=5.0)
+    model = mlflow.pyfunc.load_model(f"runs:/{run.info.run_id}/model")
+    out = pl.from_pandas(model.predict(normal_with_outage.to_pandas()))
+    expected = detector.score(normal_with_outage)["score"] >= 5.0
+    assert out["alarm"].to_list() == expected.fill_null(value=False).to_list()
+    rule = model.unwrap_python_model()
+    assert (rule.threshold, rule.alarm) == (5.0, CFG.alarm)
+
+
+def test_code_version_outside_git_is_unknown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    assert tracking.code_version() == "unknown"
+    monkeypatch.undo()
+    assert len(tracking.code_version().removesuffix("+dirty")) == 40  # this checkout's commit

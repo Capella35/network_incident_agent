@@ -61,13 +61,18 @@ Detection is built **offline first and streamed second**. All feature and model 
 - **Tests:** hand-made fixtures for every case (hit, late hit, miss, false incident, two faults overlapping, a fault on a gap).
 - **Done when:** the report runs on validation ground truth with a dummy detector and every number is checked by hand on a 1-day fixture.
 
-### Step 6 — Optuna tuning + MLflow tracking (~2 h)
-- `src/models/tune.py` + `make train`: one Optuna study per candidate on **validation weeks with injected faults**; window lengths, thresholds, contamination, hidden size, etc.
+### Step 6 — Optuna tuning + MLflow tracking (~2 h) — *done 2026-11-25*
+- `src/models/tune.py` + `make train`: one Optuna study per candidate on **validation weeks with injected faults**; thresholds (as the share of validation intervals that alarm), Isolation Forest size, autoencoder hidden size and iterations. *Window lengths not tuned (user's choice 2026-11-25, `DECISIONS.md`).*
 - Objective: **maximize detection rate, then minimize median delay, subject to ≤ 1 false incident per day** (Optuna constraint; infeasible trials never win).
 - **Budget (R4):** fixed trials and wall-clock timeout per study, e.g. 40 trials / 15 min (`tune.yaml`).
 - MLflow: one parent run per study, nested runs per trial with params, metrics, data snapshot hashes (manifest), config, seeds, code version.
 - **Tests:** a tiny study (3 trials, fixture data) runs, respects the budget, logs to a local file store.
 - **Done when:** three studies finish within budget; the comparison table (candidate × detection rate, delay, false/day) is in MLflow and `evals/results-log.md`.
+
+### Step 6b — KPI deviation features (~2–3 h) — *added 2026-11-25*
+- Why: Step 6 measured that with today's features the z-score cannot reach ≤ 1 false incident/day at any threshold, and the tuned ML candidates stay within budget only by catching 6–14 of 57 faults. The false incidents at the cap are MODELED drop_rate / latency exploding at real busy hours (`DECISIONS.md`, "Skewed KPI deviations").
+- Build the open proposal: `log1p` for real KPIs before the baseline and z; for MODELED KPIs an empirical tail z (training-week distribution of deviations → the normal z with the same tail probability); refit the baseline; re-check Step 3's feature checks.
+- **Done when:** `make train` re-run on the new features; the comparison table (before / after) in MLflow and `evals/results-log.md`; keep the change only if it detects more faults within the false-incident budget (else record why and revert).
 
 ### Step 7 — Promotion gate (~1 h)
 - `make promote`: registers the best feasible candidate as MLflow model `detector`, alias `champion`, **only if** it meets ≤ 1 false incident/day on validation **and** beats the z-score baseline on the objective (Definition of done). Otherwise the z-score baseline is champion and the report says so.
@@ -119,4 +124,4 @@ Correlation and root-node ranking (M3, beyond the provisional grouping), classif
 
 ## Status
 
-Plan confirmed 2026-11-23. Step 5 done 2026-11-25 (`src/evaluation/`: ground-truth reader, provisional incidents, matching with a shared cell, Kaplan–Meier delay + CI, unobservable faults, `make evaluate`; hand-checked 1-day fixture; z-score dummy at threshold 4 on the validation weeks: 56/57 detected, 61 false incidents/day). Step 4 done 2026-11-24. Step 3 done 2026-11-23 (seasonal baseline, causal features, stale-baseline check; real December internet level shift found). Step 2 done 2026-11-23 (seeded injector, ground truth + fingerprint, `replay --inject`, change events). Step 1 done 2026-11-23 (fault types, separate signatures, import/name boundaries for Rules 6 and 15, `change_events`). Step 4 done 2026-11-24 (three candidates behind one interface, MLflow pyfunc models, memory budget checked before logging; level-adjusted z for real KPIs, the user's option b). Next: Step 6 (Optuna tuning). Data ready: all training and validation weeks processed and calibrated (2026-11-22).
+Plan confirmed 2026-11-23. Step 6 done 2026-11-25 (`make train`: one Optuna study per candidate, ≤ 1 false incident/day constraint, threshold inside the logged model; z-score infeasible at any threshold, tuned Isolation Forest / autoencoder feasible but catch few faults; Step 6b added for the KPI deviation features). Step 5 done 2026-11-25 (`src/evaluation/`: ground-truth reader, provisional incidents, matching with a shared cell, Kaplan–Meier delay + CI, unobservable faults, `make evaluate`; hand-checked 1-day fixture; z-score dummy at threshold 4 on the validation weeks: 56/57 detected, 61 false incidents/day). Step 4 done 2026-11-24. Step 3 done 2026-11-23 (seasonal baseline, causal features, stale-baseline check; real December internet level shift found). Step 2 done 2026-11-23 (seeded injector, ground truth + fingerprint, `replay --inject`, change events). Step 1 done 2026-11-23 (fault types, separate signatures, import/name boundaries for Rules 6 and 15, `change_events`). Step 4 done 2026-11-24 (three candidates behind one interface, MLflow pyfunc models, memory budget checked before logging; level-adjusted z for real KPIs, the user's option b). Next: Step 6b (KPI deviation features), then Step 7. Data ready: all training and validation weeks processed and calibrated (2026-11-22).

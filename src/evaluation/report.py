@@ -23,7 +23,7 @@ import polars as pl
 
 from common import splits, telemetry
 from evaluation import ground_truth, metrics
-from models import detectors, tracking
+from models import cli, detectors, tracking
 from producer import data_prep, replay, topology
 from streaming import offline
 
@@ -87,7 +87,8 @@ def _summary_metrics(s: metrics.Summary, suffix: str = "") -> dict[str, float]:
     return {k + suffix: float(v) for k, v in values.items() if v is not None}
 
 
-def _metrics(result: metrics.Result) -> dict[str, float]:
+def mlflow_metrics(result: metrics.Result) -> dict[str, float]:
+    """Overall and per-type metrics for MLflow (the report run and every tuning trial)."""
     out = {
         "incidents": float(result.incidents),
         "false_incidents": float(result.false_incidents),
@@ -97,6 +98,11 @@ def _metrics(result: metrics.Result) -> dict[str, float]:
     for name, s in result.by_type.items():
         out |= _summary_metrics(s, f".{name}")
     return out
+
+
+def gaps(features: pl.DataFrame) -> pl.DataFrame:
+    """The data-gap rows of a feature frame, shaped as `score(..., gaps=)` takes them."""
+    return features.filter("data_gap").select("cell_id", "interval_start")
 
 
 def score(
@@ -125,9 +131,9 @@ def run(data_dir: Path, days: list[date], threshold: float) -> str:
     frame = offline.features_for(data_dir, days, inject=True).frame
     cfg = detectors.load_config()
     alarms = detectors.alarms(detectors.build(CANDIDATE, cfg).score(frame), threshold, cfg.alarm)
-    gaps = frame.filter("data_gap").select("cell_id", "interval_start")
+    gap_rows = gaps(frame)
     del frame  # all days' features; not needed for matching
-    result, fingerprint = score(data_dir, alarms, days=days, gaps=gaps)
+    result, fingerprint = score(data_dir, alarms, days=days, gaps=gap_rows)
     report = render(result, title=f"Detection report: {CANDIDATE}, threshold {threshold:g}")
     with tracking.start_run(EXPERIMENT, run_name=f"{CANDIDATE}@{threshold:g}"):
         mlflow.log_params(
@@ -135,10 +141,10 @@ def run(data_dir: Path, days: list[date], threshold: float) -> str:
                 "candidate": CANDIDATE,
                 "threshold": threshold,
                 "days": f"{days[0]}..{days[-1]} ({len(days)})",
-                "ground_truth_fingerprint": fingerprint,
+                "fault_schedule_fingerprint": fingerprint,
             }
         )
-        mlflow.log_metrics(_metrics(result))
+        mlflow.log_metrics(mlflow_metrics(result))
         mlflow.log_text(report, "report.md")
         outcomes = pl.DataFrame([asdict(o) for o in result.outcomes]).write_csv()
         mlflow.log_text(outcomes, "fault_outcomes.csv")
@@ -157,12 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
         report = run(args.data_dir, replay.days_in_range(args.start, args.end), args.threshold)
-    except (
-        FileNotFoundError,
-        ValueError,
-        replay.ReplayError,
-        mlflow.exceptions.MlflowException,
-    ) as exc:
+    except cli.RUN_ERRORS as exc:
         log.error("%s", exc)
         return 1
     sys.stdout.write(report)

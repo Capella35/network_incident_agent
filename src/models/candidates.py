@@ -20,22 +20,17 @@ from pathlib import Path
 
 import mlflow
 
-from common import splits
-from common.process import peak_rss_mib
-from models import detectors, tracking
-from producer import data_prep, replay
+from common import process, splits
+from models import cli, detectors, tracking
+from producer import data_prep
 from streaming import features, offline
 
 log = logging.getLogger("models.candidates")
 
 
-class OverBudgetError(RuntimeError):
-    """The candidate's process used more memory than `memory_budget_mib` (R1)."""
-
-
 def run(data_dir: Path, name: str, score_day: date) -> dict[str, float]:
     """Fit, score, check the memory budget, then log one MLflow run; returns its metrics.
-    Raises ValueError on a non-validation `score_day`, OverBudgetError before logging."""
+    Raises ValueError on a non-validation `score_day`, `process.OverBudgetError` before logging."""
     splits.require(score_day, splits.Split.VALIDATION)
     train_days = list(data_prep.require_processed_days(data_dir, splits.Split.TRAIN))
     cfg = detectors.load_config()
@@ -56,13 +51,8 @@ def run(data_dir: Path, name: str, score_day: date) -> dict[str, float]:
         "score_p50": float(scores.quantile(0.5) or 0.0),
         "score_p99": float(scores.quantile(0.99) or 0.0),
         "score_max": float(scores.max() or 0.0),  # type: ignore[arg-type]
-        "peak_rss_mib": peak_rss_mib(),
+        "peak_rss_mib": process.check_budget(name, cfg.memory_budget_mib),
     }
-    if metrics["peak_rss_mib"] > cfg.memory_budget_mib:
-        raise OverBudgetError(
-            f"{name}: peak memory {metrics['peak_rss_mib']:.0f} MiB > "
-            f"{cfg.memory_budget_mib} MiB budget (R1); not logged"
-        )
     with tracking.start_run(tracking.EXPERIMENT, run_name=name):
         tracking.log_detector(
             detector,
@@ -92,13 +82,7 @@ def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     try:
         m = run(args.data_dir, args.candidate, args.score_day)
-    except (
-        FileNotFoundError,
-        ValueError,
-        OverBudgetError,
-        replay.ReplayError,
-        mlflow.exceptions.MlflowException,
-    ) as exc:
+    except cli.RUN_ERRORS as exc:
         log.error("%s", exc)
         return 1
     budget = detectors.load_config().memory_budget_mib

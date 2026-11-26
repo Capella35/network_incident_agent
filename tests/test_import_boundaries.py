@@ -198,3 +198,17 @@ def test_relative_imports_resolve(tmp_path: Path) -> None:
     assert {"pkg.c", "pkg.c.d", "pkg.a", "pkg.a.e"} <= imported_modules(
         tmp_path / "pkg/a/b.py", tmp_path
     )
+
+
+def test_logged_model_code_imports_only_what_the_model_ships() -> None:
+    """A logged detector unpickles `models.tracking` with only `code_paths` (common, streaming,
+    models) on hand, e.g. in the Spark job: nothing it reaches may live elsewhere in src/."""
+    graph = {module_name(p, SRC): imported_modules(p, SRC) for p in sorted(SRC.rglob("*.py"))}
+    shipped = ("common", "streaming", "models")
+    repo = {m.split(".")[0] for m in graph}
+    outside = {
+        m
+        for m in reachable("models.tracking", graph)
+        if m.split(".")[0] in repo and not m.startswith(shipped)
+    }
+    assert outside == set()
