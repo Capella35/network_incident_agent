@@ -100,3 +100,9 @@ def test_alarms_with_none_above_threshold() -> None:
 def test_non_finite_features_reach_models_as_neutral_zero() -> None:
     frame = pl.DataFrame({"a": [1.0, None, float("nan"), float("inf")]})
     assert det._matrix(frame, ["a"]).ravel().tolist() == [1.0, 0.0, 0.0, 0.0]
+
+
+def test_training_rows_sample_once_then_stay_put(train: pl.DataFrame) -> None:
+    once = det.training_rows(train, 500, seed=1)
+    assert once.height == 500 and not once["data_gap"].any()
+    assert_frame_equal(det.training_rows(once, 500, seed=1), once)  # fit can resample: no-op

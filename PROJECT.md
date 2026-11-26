@@ -142,6 +142,7 @@ Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a 
 | 2026-11-24 | **December internet level shift:** option (b), real KPIs' z adjusted to the cell's recent 7-day level (user's choice); MODELED KPIs unchanged. |
 | 2026-11-23 | **Branch + pull request workflow:** every change reaches `main` through a short-lived branch and a pull request with passing CI; no integration branch. Reason: a direct push bypassed CI and broke `main`. |
 | 2026-11-25 | **Detection delay = Kaplan–Meier median** with missed faults censored, reported with its 95% CI (user's choice); the ≤ 2-interval bar is unchanged. Reason: the median over detected faults only is biased low. |
+| 2026-11-25 | **Optuna tuning (M2 Step 6):** one study per detector, ≤ 1 false incident/day as a hard constraint, threshold tuned as a share of alarming validation intervals and stored inside the logged model; feature settings not tuned. Finding: with today's features no detector is both quiet and sensitive, because MODELED drop rate / latency explode at real busy hours, so the KPI-skew feature fix comes next, before promotion. |
 
 ## Still open
 

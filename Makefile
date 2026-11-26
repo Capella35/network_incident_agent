@@ -1,4 +1,4 @@
-.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate inject clean \
+.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate train inject clean \
 	env-check up down ps logs spark-smoke db-migrate db-topology replay sink replay-check dashboards \
 	test-integration
 
@@ -56,6 +56,13 @@ candidates: env-check  ## Train each detector candidate (own process: memory bud
 	for c in $$cands; do \
 		$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m models.candidates --candidate $$c $(ARGS) || exit 1; \
 	done
+
+train: env-check  ## Optuna study per detector candidate (own process: memory budget) on validation weeks, then the comparison table (MLflow)
+	@cands=$$(uv run python -c 'from models.detectors import CANDIDATES; print(*CANDIDATES)') && test -n "$$cands" || { echo "could not list the detector candidates"; exit 1; }; \
+	for c in $$cands; do \
+		$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m models.tune --candidate $$c $(ARGS) || exit 1; \
+	done; \
+	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m models.tune --compare
 
 evaluate: env-check  ## Validation report: z-score baseline at a threshold vs the ground truth, logged to MLflow (ARGS="--threshold 4 [--start … --end …]")
 	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m evaluation.report $(ARGS)

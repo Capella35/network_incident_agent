@@ -10,9 +10,11 @@ entry -> optionally delete the raw file. Reads text only; never executes downloa
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import sys
+from collections.abc import Iterable
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
@@ -52,6 +54,31 @@ def require_processed_days(data_dir: Path, split: splits.Split) -> dict[date, Pa
     raise FileNotFoundError(
         f"no processed {split} days in {Paths(data_dir).traffic}: run `make data`"
     )
+
+
+# Derived inputs every feature depends on (topology, capacity calibration, seasonal baseline).
+SNAPSHOT_DERIVED = ("topology_nodes.csv", "kpi_calibration.json", "baseline.parquet")
+
+
+def snapshot(data_dir: Path, days: Iterable[date]) -> str:
+    """SHA-256 over the manifest's hashes of these days' processed files plus the derived inputs
+    (`SNAPSHOT_DERIVED`, "absent" if missing): one ID for the data a run used (MLflow,
+    `evals/results-log.md`). Raises FileNotFoundError for a day not in the manifest."""
+    paths = Paths(data_dir)
+    recorded = {
+        e["processed"]["output"]: e["processed"]["output_sha256"]
+        for e in manifest.load(paths.manifest).get("files", {}).values()
+        if "processed" in e
+    }
+    wanted = [paths.traffic_day(d).relative_to(data_dir).as_posix() for d in days]
+    if missing := [w for w in wanted if w not in recorded]:
+        raise FileNotFoundError(f"not in the manifest: {missing[:3]}; run `make data`")
+    derived = [
+        [name, integrity.sha256_file(f) if (f := paths.processed / name).exists() else "absent"]
+        for name in SNAPSHOT_DERIVED
+    ]
+    blob = json.dumps([*([w, recorded[w]] for w in sorted(wanted)), *derived])
+    return hashlib.sha256(blob.encode()).hexdigest()
 
 
 def _now() -> str:

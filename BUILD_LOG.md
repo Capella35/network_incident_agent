@@ -20,6 +20,32 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-25 — Milestone 2, step 6: Optuna tuning + MLflow tracking
+
+**What was built:**
+- `src/models/tune.py` + `tune.yaml` + `make train`: one Optuna study per candidate (own process, R1; TPE seeded; 40 trials / 900 s, R4) on the validation weeks with SYNTHETIC faults, detectors fit on the clean training weeks. Objective: faults detected, then lowest Kaplan–Meier median ("not reached" = worst, user's choice); ≤ 1 false incident/day as an Optuna constraint (`trial.set_constraint`). Threshold tuned as the share of validation cell-intervals that alarm. Trials scored only through `evaluation.report.score` (Rule 6). MLflow (`detector-tuning`): parent run per study, nested run per trial, all tagged with `data_snapshot`, `code_version`, `fault_schedule_fingerprint`; the best feasible model is logged on the parent **with its threshold and alarm settings inside** (pyfunc adds an `alarm` column). `--compare` writes the comparison table (MLflow `comparison.md`); `latest_studies()` is the query Step 7 will reuse.
+- Shared helpers: `detectors.build(..., overrides)`, `detectors.training_rows` (sampled once per study, identical to what fit samples), `tracking.start_run(nested=)`, `tracking.code_version`, `common.process.check_budget` / `OverBudgetError` (moved from `candidates`), `models.cli.RUN_ERRORS` (one CLI error list, kept out of the module models unpickle from), `data_prep.snapshot` (manifest hashes of the days + topology, calibration, baseline), `evaluation.report.gaps`, `metrics.Summary.observable`. New dependency: `optuna` 5.1.0.
+- New test guard: `models.tracking` may reach only `common`, `streaming`, `models` (what a logged model ships).
+
+**Review (before verification):**
+- First real run showed the training-score threshold range could not go high enough (1e-5 tail = z 8.6 → 22 false/day); changed to the validation alarm share. A threshold sweep then showed the z-score is infeasible at **every** threshold (z ≥ 20: 14/57, 11.9/day), caused by MODELED drop_rate / latency at real busy hours; the user chose to finish Step 6 and fix the features next (Step 6b).
+- `/simplify`, 4 reviewers. Applied: threshold inside the logged model; budget check to `common.process`; provenance tags on every trial; `latest_studies()`; one training sample per study and none for the z-score; reuse the fit while parameters repeat (z-score: 1 fit for 40 trials); `report.gaps`; `Summary.observable`; shared CLI error list; test helpers. Skipped: a shared Makefile loop for `candidates`/`train` (would need fragile `$$$$` escaping), batching MLflow calls (~1–2 s per study), narrowing the import-boundary rule.
+- `/code-review` (medium), 8 findings. **Important, fixed:** the CLI error list in `models.tracking` pulled `producer` into the module logged models unpickle from (would break loading in Spark; now `models.cli` + a boundary test); `code_version` ignored untracked files (now counts them as dirty); tuning runs did not record the fault schedule they were scored on (now tagged). Nits fixed: derived inputs in the snapshot, old scored frame freed before a refit, training columns selected before sampling, docstring. Skipped: re-reading the ~8 KB ground truth per trial (< 5 ms).
+
+**Tests run and results:**
+- `make check`: 424 passed, coverage 92.32%.
+- Done when (all three studies on the real validation weeks; MLflow to a local file store because Docker was down): z-score 40 trials in 4 s, 763 MiB, **no feasible trial**; Isolation Forest 40 trials in 154 s, 1,006 MiB, best feasible 6/57 detected (10.5%), 0.93 false/day, delay not reached; autoencoder 40 trials in 254 s, 1,073 MiB, best feasible 14/57 (24.6%), 0.29 false/day, delay not reached (CI low 27). All within 900 s and 1,536 MiB. Comparison table in MLflow (`comparison.md`) and `evals/results-log.md`. Same numbers on two runs (seeded).
+- Threshold sweeps (scratch scripts, not committed), z-score on validation: all KPIs never ≤ 1/day; real KPIs only reach 0.29/day at z ≥ 12 (10/57); real + load_ratio 1.14/day even at z = 20.
+
+**Decisions made:** (also in DECISIONS.md)
+- "Not reached" ranks worst; windows not tuned; KPI-skew fix after Step 6 (user's choices). Threshold = validation alarm share; threshold inside the model; provenance tags; Optuna 5.1.
+- KPI-skew item is now **needed before Step 7**; Step 6b added to the milestone plan.
+
+**Open items:**
+- Re-run `make train` against the stack's MLflow (Docker down this session).
+- Step 6b: KPI deviation features, then `make train` again (before/after table).
+- MLflow warns that pyfunc models are pickled with CloudPickle (models-from-code would avoid it): decide in Step 7/8.
+
 ## 2026-11-25 — Milestone 2, step 5: evaluation
 
 **What was built:**

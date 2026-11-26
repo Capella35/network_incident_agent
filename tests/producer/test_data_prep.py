@@ -2,13 +2,14 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from datetime import date
 from pathlib import Path
 
 import polars as pl
 import pytest
 
 from common import splits
-from producer import data_prep, integrity
+from producer import data_prep, integrity, manifest
 from tests.producer.conftest import DAY, DAY_START_MS, tsv_row, write_grid
 
 Published = dict[str, integrity.PublishedFile]
@@ -97,3 +98,31 @@ def test_require_processed_days_names_the_fix(tmp_path: Path) -> None:
     day = splits.days(splits.Split.VALIDATION)[0]
     paths.traffic_day(day).write_bytes(b"stub")
     assert list(data_prep.require_processed_days(tmp_path, splits.Split.VALIDATION)) == [day]
+
+
+def test_snapshot_hashes_the_recorded_processed_files(tmp_path: Path) -> None:
+    def entry(day: str, sha: str) -> dict[str, object]:
+        return {"processed": {"output": f"processed/traffic/{day}.parquet", "output_sha256": sha}}
+
+    doc = {
+        "version": 1,
+        "files": {
+            "a.txt": entry("2013-11-04", "aa"),
+            "b.txt": entry("2013-11-05", "bb"),
+            "grid": {},
+        },
+    }
+    manifest.save(tmp_path / "manifest.json", doc)
+    days = [date(2013, 11, 5), date(2013, 11, 4)]
+    first = data_prep.snapshot(tmp_path, days)
+    assert first == data_prep.snapshot(tmp_path, days[::-1])  # order-free
+    assert first != data_prep.snapshot(tmp_path, days[:1])
+    doc["files"]["a.txt"] = entry("2013-11-04", "changed")  # type: ignore[index]
+    manifest.save(tmp_path / "manifest.json", doc)
+    assert first != data_prep.snapshot(tmp_path, days)
+    changed = data_prep.snapshot(tmp_path, days)
+    (tmp_path / "processed").mkdir()
+    (tmp_path / "processed" / "baseline.parquet").write_bytes(b"refit")  # a derived input
+    assert data_prep.snapshot(tmp_path, days) != changed
+    with pytest.raises(FileNotFoundError, match="2013-11-06"):
+        data_prep.snapshot(tmp_path, [date(2013, 11, 6)])

@@ -174,9 +174,12 @@ class Summary:
     delay: Median
 
     @property
+    def observable(self) -> int:
+        return self.faults - self.unobservable
+
+    @property
     def detection_rate(self) -> float | None:
-        observable = self.faults - self.unobservable
-        return self.detected / observable if observable else None
+        return self.detected / self.observable if self.observable else None
 
 
 def summarize(outcomes: Sequence[FaultOutcome]) -> Summary:
