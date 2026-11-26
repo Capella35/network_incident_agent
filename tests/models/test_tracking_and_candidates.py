@@ -18,14 +18,6 @@ CFG = det.load_config()
 VAL_DAY = splits.days(splits.Split.VALIDATION)[0]
 
 
-@pytest.fixture
-def local_mlflow(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """A throwaway MLflow file store (mlflow-skinny has no SQL store; the file store is opt-in)."""
-    monkeypatch.setenv("MLFLOW_ALLOW_FILE_STORE", "true")
-    monkeypatch.setenv("MLFLOW_DISABLE_AGENT_HINT", "1")
-    mlflow.set_tracking_uri((tmp_path / "mlruns").as_uri())
-
-
 def test_logged_model_scores_like_the_detector(
     local_mlflow: None, train: pl.DataFrame, normal_with_outage: pl.DataFrame
 ) -> None:

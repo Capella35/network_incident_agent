@@ -229,8 +229,7 @@ def for_days(
     """The split's faults that touch `days`, the change events logged on those days, and the
     fingerprint of the whole schedule (to check it against the ground truth file)."""
     whole = schedule(split, index, cfg, final_eval=final_eval)
-    start = milan.day_intervals(days[0])[0]
-    end = milan.day_intervals(days[-1])[-1] + INTERVAL
+    start, end = milan.window(days)
     faults, events = in_window(whole, change_events(whole, index, cfg, split), start, end)
     return faults, events, fingerprint(whole)
 
@@ -245,10 +244,15 @@ def in_window(
     return kept, [e for e in events if start <= e.applied_at < end or e.change_id in theirs]
 
 
+def ground_truth_path(processed: Path, split: splits.Split, cfg: Config) -> Path:
+    """Where `make inject` writes the split's schedule (its `.meta.json` sits beside it)."""
+    return processed / GROUND_TRUTH_DIR / f"{split}-{cfg.seeds[split]}.parquet"
+
+
 def check_schedule(processed: Path, split: splits.Split, cfg: Config, fp: str) -> None:
     """Refuse a schedule that differs from the ground truth written by `make inject` (config or
     topology changed since): evaluation would score against the wrong labels."""
-    meta_path = processed / GROUND_TRUTH_DIR / f"{split}-{cfg.seeds[split]}.meta.json"
+    meta_path = ground_truth_path(processed, split, cfg).with_suffix(".meta.json")
     if not meta_path.exists():
         log.warning('no ground truth for %s yet; run `make inject ARGS="--split %s"`', split, split)
         return
@@ -340,7 +344,7 @@ def write_ground_truth(
 ) -> Path:
     """Write the schedule for src/evaluation/ (Rule 6), with a sidecar of what made it."""
     seed = cfg.seeds[split]
-    path = processed / GROUND_TRUTH_DIR / f"{split}-{seed}.parquet"
+    path = ground_truth_path(processed, split, cfg)
     path.parent.mkdir(parents=True, exist_ok=True)
     _ground_truth_frame(faults).write_parquet(path)
     manifest.save(

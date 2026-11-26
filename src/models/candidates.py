@@ -63,8 +63,7 @@ def run(data_dir: Path, name: str, score_day: date) -> dict[str, float]:
             f"{name}: peak memory {metrics['peak_rss_mib']:.0f} MiB > "
             f"{cfg.memory_budget_mib} MiB budget (R1); not logged"
         )
-    mlflow.set_experiment(tracking.EXPERIMENT)
-    with mlflow.start_run(run_name=name):
+    with tracking.start_run(tracking.EXPERIMENT, run_name=name):
         tracking.log_detector(
             detector,
             params={

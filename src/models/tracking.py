@@ -34,6 +34,14 @@ class DetectorModel(PythonModel):
         return self.detector.score(pl.from_pandas(model_input)).to_pandas()
 
 
+def start_run(experiment: str, run_name: str) -> mlflow.ActiveRun:
+    """A run in `experiment` (created if missing), addressed by ID: unlike `mlflow.set_experiment`
+    it leaves no process-wide active experiment behind."""
+    found = mlflow.get_experiment_by_name(experiment)
+    exp_id = found.experiment_id if found else mlflow.create_experiment(experiment)
+    return mlflow.start_run(experiment_id=exp_id, run_name=run_name)
+
+
 def log_detector(detector: Detector, *, params: dict[str, Any], metrics: dict[str, float]) -> None:
     """Log the detector's parameters, `metrics`, and the pyfunc model into the active MLflow run.
     The caller owns the run (a plain run now; a nested run per Optuna trial in step 6)."""

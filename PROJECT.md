@@ -141,6 +141,7 @@ Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a 
 | 2026-11-22 | **Milestone 1 done:** replay → Kafka → Postgres → Grafana, reproducible (`make replay-check` → MATCH on training week 1); all M1 guardrails pass; ODbL attribution links applied as the publisher words them. Details in `DECISIONS.md` and `BUILD_LOG.md`. |
 | 2026-11-24 | **December internet level shift:** option (b), real KPIs' z adjusted to the cell's recent 7-day level (user's choice); MODELED KPIs unchanged. |
 | 2026-11-23 | **Branch + pull request workflow:** every change reaches `main` through a short-lived branch and a pull request with passing CI; no integration branch. Reason: a direct push bypassed CI and broke `main`. |
+| 2026-11-25 | **Detection delay = Kaplan–Meier median** with missed faults censored, reported with its 95% CI (user's choice); the ≤ 2-interval bar is unchanged. Reason: the median over detected faults only is biased low. |
 
 ## Still open
 

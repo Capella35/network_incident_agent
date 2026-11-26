@@ -74,6 +74,7 @@ MLflow: every detector/classifier run, the model registry, and the promotion gat
 
 - Detect **≥ 90%** of injected faults in the test weeks
 - Median detection delay **≤ 2 intervals** (20 min of data time); **≤ 1 false incident per simulated day** across the whole network (all three numbers always reported together, with the days of data they were measured on)
+  - *2026-11-25 (Rule 5 note; bar unchanged):* "median" is the **Kaplan–Meier** median of time-to-detection, with missed faults right-censored, reported with its 95% CI (`specs/09-evals.md`; `DECISIONS.md` 2026-11-25). Reason: a median over detected faults only is biased low.
 - Root cause: correct root node ranked **#1 in ≥ 80%** of multi-cell incidents; alarm-to-incident compression ratio reported
 - Incident mislabel rate **≤ 10%**, reported per category, on test weeks and unseen report templates
 - The promoted detector beats the simplest baseline (seasonal z-score) on the validation objective; the comparison table is in the README
