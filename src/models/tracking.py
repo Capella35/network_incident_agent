@@ -14,6 +14,7 @@ after a config change.
 from __future__ import annotations
 
 import subprocess
+from dataclasses import dataclass
 from importlib.metadata import version
 from importlib.resources import files
 from typing import Any
@@ -44,6 +45,24 @@ class DetectorModel(PythonModel):
         if self.threshold is not None:
             scored = scored.with_columns(alarm=(pl.col("score") >= self.threshold).fill_null(False))
         return scored.to_pandas()
+
+
+@dataclass(frozen=True)
+class Tuned:
+    """A fitted detector and its complete alarm rule, as a tuning study logged it."""
+
+    detector: Detector
+    threshold: float
+    alarm: AlarmParams
+
+
+def load_tuned(run_id: str) -> Tuned:
+    """The tuned detector study run `run_id` logged. Raises ValueError if its model has no
+    threshold (an untuned candidate run)."""
+    model = mlflow.pyfunc.load_model(f"runs:/{run_id}/model").unwrap_python_model()
+    if not isinstance(model, DetectorModel) or model.threshold is None or model.alarm is None:
+        raise ValueError(f"run {run_id}: no tuned detector with a threshold")
+    return Tuned(model.detector, model.threshold, model.alarm)
 
 
 def start_run(experiment: str, run_name: str, *, nested: bool = False) -> mlflow.ActiveRun:

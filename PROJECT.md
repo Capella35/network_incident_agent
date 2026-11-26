@@ -144,6 +144,7 @@ Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a 
 | 2026-11-25 | **Detection delay = Kaplan–Meier median** with missed faults censored, reported with its 95% CI (user's choice); the ≤ 2-interval bar is unchanged. Reason: the median over detected faults only is biased low. |
 | 2026-11-25 | **Optuna tuning (M2 Step 6):** one study per detector, ≤ 1 false incident/day as a hard constraint, threshold tuned as a share of alarming validation intervals and stored inside the logged model; feature settings not tuned. Finding: with today's features no detector is both quiet and sensitive, because MODELED drop rate / latency explode at real busy hours, so the KPI-skew feature fix comes next, before promotion. |
 | 2026-11-26 | **KPI deviation features (M2 Step 6b):** real traffic KPIs on `log1p` against the clock; MODELED latency judged against load (training-week load curve; user's proposal); MODELED drop rate not detected (a function of load only). Measured: Isolation Forest 6 → 32 and autoencoder 14 → 32 of 57 faults within ≤ 1 false incident/day; z-score still infeasible. Details: `DECISIONS.md`. |
+| 2026-11-26 | **Union of Isolation Forest + autoencoder alarms (M2 Step 6c):** chosen from a miss diagnosis (misses long and large, the two detectors' misses mostly different); 38/57 at 0.86 false incidents/day, KM median 6 (from 32/57, KM 9–10). Short of the 90% / ≤ 2 bars. Details: `DECISIONS.md`. |
 
 ## Still open
 

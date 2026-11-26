@@ -17,7 +17,7 @@ Trained offline on **training weeks** (`common.splits`, Rule 7):
 2. **Isolation Forest** on windowed multi-KPI features.
 3. **Autoencoder**: reconstruction error on windowed features.
 
-Optuna tunes window lengths, thresholds, contamination, latent size, and other hyperparameters on **validation weeks**. Objective: **maximize detection rate and minimize delay, subject to ≤ 1 false incident per day**. Every trial is logged to MLflow; the trial budget and wall-clock timeout are fixed per study (guardrail R4).
+Optuna tunes window lengths, thresholds, contamination, latent size, and other hyperparameters on **validation weeks**. **Union (Step 6c):** the tuned Isolation Forest and autoencoder combined, a cell-interval alarming if either reaches its own threshold (`make union`); their misses are mostly different faults. Objective: **maximize detection rate and minimize delay, subject to ≤ 1 false incident per day**. Every trial is logged to MLflow; the trial budget and wall-clock timeout are fixed per study (guardrail R4).
 
 ## Promotion
 - The winner is registered in MLflow and promoted only through an **evaluation gate**: it must beat the z-score baseline on the validation objective (Definition of done, `00-overview.md`). Gate thresholds beyond that **(M2)**.

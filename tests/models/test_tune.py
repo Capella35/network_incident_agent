@@ -9,35 +9,21 @@ import pytest
 from mlflow.entities import Run
 from pydantic import ValidationError
 
-from common import process, splits
-from evaluation import metrics, report
+from common import process
+from evaluation import report
 from models import detectors as det
 from models import tune
 from streaming import offline
-from tests.models.conftest import OUTAGE
-
-DAY = splits.days(splits.Split.VALIDATION)[0]
-
-
-def _result(detected: int, delay: int | None, false: int, days: int = 1) -> metrics.Result:
-    s = metrics.Summary(
-        faults=1, unobservable=0, detected=detected, delay=metrics.Median(delay, None, None)
-    )
-    return metrics.Result(
-        days=tuple(DAY for _ in range(days)),
-        overall=s,
-        by_type={},
-        incidents=detected + false,
-        false_incidents=false,
-        outcomes=(),
-    )
+from tests.models.conftest import DAY, FakeScore, result_of
 
 
 def test_objective_is_lexicographic_detected_then_delay() -> None:
     v = tune.objective_value
-    assert v(_result(2, None, 0)) > v(_result(1, 0, 0))  # one more fault beats any delay
-    assert v(_result(1, 0, 0)) > v(_result(1, 3, 0)) > v(_result(1, None, 0))  # not reached: worst
-    assert v(_result(1, 3, 0)) == v(_result(1, 3, 50))  # false incidents: the constraint's job
+    assert v(result_of(2, None, 0)) > v(result_of(1, 0, 0))  # one more fault beats any delay
+    assert (
+        v(result_of(1, 0, 0)) > v(result_of(1, 3, 0)) > v(result_of(1, None, 0))
+    )  # not reached: worst
+    assert v(result_of(1, 3, 0)) == v(result_of(1, 3, 50))  # false incidents: the constraint's job
 
 
 def _cfg(n_trials: int = 3, **search: dict[str, tune.IntRange]) -> tune.Config:
@@ -90,26 +76,6 @@ def test_load_study_data_keeps_only_the_training_sample(
     assert iforest.train.height == min(rows, train.filter(~pl.col("data_gap")).height)
     assert iforest.gaps.columns == ["cell_id", "interval_start"]
     assert tune.load_study_data(Path(), "zscore").train.height == 0  # nothing to fit
-
-
-class FakeScore:
-    """Stand-in for `evaluation.report.score` on the one-cell fixture: the planted outage is the
-    one fault (detected at delay 0 if any alarm falls in it); every other alarm is a false
-    incident, or `false_incidents` for each trial when set."""
-
-    def __init__(self, validation: pl.DataFrame, false_incidents: int | None = None) -> None:
-        times = validation.sort("interval_start")["interval_start"].to_list()
-        self.outage = {times[i] for i in OUTAGE}
-        self.false_incidents = false_incidents
-        self.calls = 0
-
-    def __call__(
-        self, _d: Path, alarms: pl.DataFrame, *, days: list[date], gaps: pl.DataFrame
-    ) -> tuple[metrics.Result, str]:
-        self.calls += 1
-        inside = alarms.filter(pl.col("interval_start").is_in(list(self.outage))).height
-        false = alarms.height - inside if self.false_incidents is None else self.false_incidents
-        return _result(int(inside > 0), 0 if inside else None, false, len(days)), "fp"
 
 
 @pytest.fixture

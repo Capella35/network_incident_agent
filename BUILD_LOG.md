@@ -20,6 +20,42 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-26 — Milestone 2, step 6c: miss diagnosis + union of detectors
+
+**What was built:**
+- Step 6b committed on its branch (`3c61778`, not pushed).
+- `src/evaluation/misses.py` + `make diagnose`: per-fault diagnosis of the latest tuned detectors on the validation weeks (type, duration, cells, worst KPI bad z on the fault's cells, peak score / threshold over the match window; breakdowns by type, duration, deviation size, cell count; delay of the caught faults). Ground truth stays in `evaluation` (Rule 6). MLflow `detector-evaluation`, role `misses`.
+- `src/models/ensemble.py` + `make union`: union of the tuned members, each at its own threshold (score = highest score / threshold); measures each member alone and the union in one run (ablation); MLflow `detector-tuning`, role `ensemble`.
+- Shared: `tune.load_validation` / `tune.score_study` (refuses a study tuned under another `features.yaml` or fault schedule), `tune.feasible_studies`, `tracking.load_tuned` (`Tuned`), `metrics.caught_delays`, `metrics.widened`, `report.delay_text`; test helpers `FakeScore`, `result_of`, `logged_study`, `use_validation` moved/added to `tests/models/conftest.py`.
+
+**Diagnosis (before any change), Step 6b models, validation weeks:**
+- Delay of caught faults (intervals): Isolation Forest median 0, worst 16; autoencoder median 2.5, worst 17; KM medians (misses censored) 10 and 9. The KM median fails the ≤ 2 bar because of the misses, not slow detection.
+- Misses (25 each): congestion 10–12/12, cell outage 5–6/11, config push 3–5/9, site power 3–4/17, backhaul 0–2/8. 23 of 25 last 6–36 intervals. 13–15 of 25 have a worst KPI bad z ≥ 12 (cell outages at the z = 20 cap unalarmed). Single- and 3-cell faults; every fault on ≥ 21 cells is caught. Isolation Forest's misses peak at 0.85–1.00 of its threshold; the autoencoder's congestion misses at 0.02–0.12 (it barely reacts to load).
+- Reading: the features carry the signal; the scores don't rank long, large single-KPI deviations above the noise. The two detectors' misses overlap on 19 faults.
+
+**Change chosen:** union (smallest, no re-tuning, ceiling 38/57 known from the overlap). Not short-window features (misses are long and large), not persistence (needs a new threshold, false-incident effect unknown). Abandon criteria set before measuring: < 36/57, > 1.0/day, KM median worse than 9.
+
+**Tests run and results:**
+- `make check`: 445 passed, coverage 92.59%.
+- `make union` (8 s, 898 MiB of 1,536):
+
+| Detector | Faults detected | False incidents/day | KM median [CI] | Median / worst delay, detected |
+|---|---|---|---|---|
+| autoencoder alone | 32/57 | 0.00 | 9 [6, n/r] | 2.5 / 17 |
+| Isolation Forest alone | 32/57 | 0.93 | 10 [2, n/r] | 0 / 16 |
+| **union** | **38/57** | **0.86** | **6 [2, 14]** | 0 / 17 |
+
+  Kept (meets all three criteria). False incidents fall slightly: some Isolation Forest false alarms merge into incidents the autoencoder's alarms match.
+
+**Review (before verification):** `/code-review` medium: 1 important fixed — `make union` / `make diagnose` scored the latest study without checking it was tuned under the current features and fault schedule (a Step 6 study would crash on `drop_rate_bad` or silently mis-score): `tune.score_study` now refuses it (tests). Nits fixed: peaks over the match window, thresholds ≤ 0 refused, one delay helper and one study-scoring path (no copies), features built once + memory check in `make diagnose`, numeric order in the breakdown tables, bin-boundary comment, provenance tags on diagnosis runs.
+
+**Decisions made:** `DECISIONS.md` 2026-11-26 (union, from the diagnosis).
+
+**Open items:**
+- Still short: 66.7% vs ≥ 90%, KM median 6 vs ≤ 2. Remaining misses are mostly congestion (load against the clock is noisy; the autoencoder ignores it) and large single-KPI outages the ML scores rank too low.
+- The union is measured, not a promotable model: Step 7 needs a pyfunc for it (or the gate must accept a union of registered members).
+- The thresholds were tuned on validation and are measured on validation (the project's Rule 7 design; training weeks have no faults). The honest number is the test-week run in M6.
+
 ## 2026-11-26 — Milestone 2, step 6b: KPI deviation features
 
 **What was built:**

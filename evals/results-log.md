@@ -10,6 +10,7 @@ One row per measured run. Step 6 rows (2026-11-25) were logged to a local MLflow
 | 2026-11-26 | validation | 52a97ac6 (fault schedule 62d292f4) | tune.yaml v1, features.yaml Step 6b (log1p real KPIs, latency vs load, drop_rate not detected); M2 Step 6b | zscore study 1ba17f05 (no feasible trial) | n/a (at z ≥ 20: 61.4% with 1.79/day) | n/a | n/a | 2013-12-02 → 12-15 (14) | – | – |
 | 2026-11-26 | validation | 52a97ac6 (fault schedule 62d292f4) | tune.yaml v1, features.yaml Step 6b; M2 Step 6b; alarm share 2.6e-3, threshold 0.716 | iforest study 6a2b8311, trial 32 | 56.1% (32/57) | 10 [2, not reached] | 0.93 | 2013-12-02 → 12-15 (14) | – | – |
 | 2026-11-26 | validation | 52a97ac6 (fault schedule 62d292f4) | tune.yaml v1, features.yaml Step 6b; M2 Step 6b; alarm share 1.2e-2, threshold 35.7 | autoencoder study 90ccf60f, trial 0 | 56.1% (32/57) | 9 [6, not reached] | 0.00 | 2013-12-02 → 12-15 (14) | – | – |
+| 2026-11-26 | validation | 52a97ac6 (fault schedule 62d292f4) | features.yaml Step 6b; M2 Step 6c; union of iforest 6a2b8311 + autoencoder 90ccf60f at their own tuned thresholds (nothing re-tuned) | ensemble run 267381d9 | 66.7% (38/57) | 6 [2, 14] (KM); detected only: median 0, worst 17 | 0.86 | 2013-12-02 → 12-15 (14) | – | – |
 
 ## Agent results
 

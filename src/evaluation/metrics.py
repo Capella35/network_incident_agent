@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import itertools
 import math
+import statistics
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -105,13 +106,14 @@ def incidents(alarms: pl.DataFrame, index: topology.Index) -> pl.DataFrame:
     )
 
 
-def _widened(f: Fault) -> tuple[datetime, datetime]:
+def widened(f: Fault) -> tuple[datetime, datetime]:
+    """The window an alarm may fall in to match `f`: its own, +- `TOLERANCE` intervals."""
     return f.onset - TOLERANCE * INTERVAL, f.end + TOLERANCE * INTERVAL
 
 
 def matches(start: datetime, end: datetime, cells: Sequence[str], f: Fault) -> bool:
     """Does the incident [start, end) on `cells` match fault `f`?"""
-    lo, hi = _widened(f)
+    lo, hi = widened(f)
     return not set(cells).isdisjoint(f.cells) and start < hi and lo < end
 
 
@@ -148,7 +150,7 @@ def outcome(
     f: Fault, alarms: pl.DataFrame, gaps: pl.DataFrame, window_end: datetime
 ) -> FaultOutcome:
     """One scored fault: detected or censored, observable or all gaps."""
-    lo, hi = _widened(f)
+    lo, hi = widened(f)
     hi = min(hi, window_end)
     on_cells = pl.col("cell_id").is_in(f.cells)
     first = alarms.filter(on_cells, pl.col("interval_start").is_between(lo, hi, closed="left"))
@@ -186,6 +188,13 @@ def summarize(outcomes: Sequence[FaultOutcome]) -> Summary:
     seen = [o for o in outcomes if o.observable]
     delay = km_median([o.time for o in seen], [o.detected for o in seen])
     return Summary(len(outcomes), len(outcomes) - len(seen), sum(o.detected for o in seen), delay)
+
+
+def caught_delays(outcomes: Sequence[FaultOutcome]) -> tuple[float | None, int | None]:
+    """(median, worst) delay of the detected faults, in intervals; (None, None) if none. Unlike
+    the Kaplan-Meier median, missed faults are left out: how fast the caught ones were seen."""
+    caught = [o.time for o in outcomes if o.observable and o.detected]
+    return (statistics.median(caught), max(caught)) if caught else (None, None)
 
 
 @dataclass(frozen=True)

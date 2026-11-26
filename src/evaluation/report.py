@@ -37,7 +37,7 @@ def _rate(s: metrics.Summary) -> str:
     return "n/a" if s.detection_rate is None else f"{s.detection_rate:.1%}"
 
 
-def _delay(m: metrics.Median) -> str:
+def delay_text(m: metrics.Median) -> str:
     def bound(v: int | None) -> str:
         return "n/a" if v is None else str(v)
 
@@ -63,7 +63,8 @@ def render(result: metrics.Result, *, title: str) -> str:
     ]
     rows = [*result.by_type.items(), ("**overall**", result.overall)]
     lines += [
-        f"| {n} | {s.faults} | {s.unobservable} | {s.detected} | {_rate(s)} | {_delay(s.delay)} |"
+        f"| {n} | {s.faults} | {s.unobservable} | {s.detected} | {_rate(s)} "
+        f"| {delay_text(s.delay)} |"
         for n, s in rows
     ]
     lines += [

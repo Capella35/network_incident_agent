@@ -11,7 +11,7 @@ The project lives in `~/Projects/network_incident_agent` (moved 2026-11-14). Kee
 Milan traffic replay + fault injector → **Kafka** (`telemetry.raw`) → **Spark Structured Streaming** (windowed features + promoted detector) → Kafka `alarms` → **correlator** (topology rules + graph ranking) → incident + root node → **XGBoost** classifier → **PostgreSQL** → **Grafana** (KPIs, health), **Streamlit** console (human approve/correct/close), **ops agent** (Groq API, read-only tools). **MLflow** tracks every model run, holds the registry, and runs the promotion gate. Everything starts with `docker compose up`. Full diagram and component table: `specs/00-overview.md`.
 
 ## Status and commands
-Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `specs/milestones/milestone-2.md`; Steps 1–6b done). Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
+Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `specs/milestones/milestone-2.md`; Steps 1–6c done). Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
 
 | Task | Command |
 |---|---|
@@ -28,6 +28,8 @@ Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `spe
 | Compute a split's detection features and report time + memory | `make features ARGS="--split validation --inject"` |
 | Train each detector candidate on training weeks, score a validation day, log to MLflow (stack running) | `make candidates` (`ARGS="--score-day 2013-12-02"`) |
 | Tune each detector with Optuna on validation weeks (≤ 1 false incident/day), log studies + best model + comparison table to MLflow (stack running) | `make train` (`python -m models.tune --compare` for the table only) |
+| Union of the latest tuned detectors vs each alone on validation weeks (ablation, MLflow; stack running) | `make union` |
+| Why faults are missed: per-fault diagnosis of the latest tuned detectors (MLflow; stack running) | `make diagnose` |
 | Validation report (z-score baseline at a threshold vs the SYNTHETIC ground truth; Markdown + MLflow, stack running) | `make evaluate ARGS="--threshold 4 [--start 2013-12-02 --end 2013-12-15]"` |
 | Start / stop the local stack (Kafka, Postgres, MLflow, Grafana); needs `.env` | `make up` / `make down` (`make ps`, `make logs`) |
 | Load the synthetic topology into Postgres | `make db-topology` |
