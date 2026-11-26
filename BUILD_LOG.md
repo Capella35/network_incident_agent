@@ -20,6 +20,39 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-26 — Milestone 2, step 6b: KPI deviation features
+
+**What was built:**
+- Revised Step 6b design (the user's proposal, 2026-11-26): each detected KPI is judged against what explains its normal swings. Real traffic KPIs on a `log1p` scale against the clock (seasonal baseline; the 7-day level is now an additive log offset, i.e. multiplicative, averaged only over hours with traffic and a baseline). MODELED `latency_ms` **against load**: log latency vs a training-week curve over 100 equal-count `load_ratio` bins, one curve for all cells (load is capacity-normalized; MODELED: it recovers the KPI model's formula here). MODELED `drop_rate` **not detected** (`not_detected` in `features.yaml`): no injected fault moves it off its load curve. `load_ratio` against the clock as before.
+- `streaming.features`: `Reference` (seasonal + load curve), `detection_value` / `std_floor` (one log-scale rule; `std_floor_log` 0.05), `load_bin`, `feature_kpis(cfg)` / `clock_kpis(cfg)` / `level_kpis(cfg)`; config validated against the domain. `streaming.baseline` fits and writes both (`load_curve.parquet`; sidecar removed before a refit so a half-written refit reads as missing).
+- Docs: `specs/03-detection.md` (features), `DECISIONS.md` (open "Skewed KPI deviations" → decided 2026-11-26, plus a stray blank line that split the decided table), `PROJECT.md`, milestone plan (Step 8 now carries level-offset state + the load curve).
+
+**Measured before building (training weeks, no labels):** load ≥ 0.9 in 1,314 of 580,608 rows; latency residual vs load tails match a normal (|r| > 3: 1.27e-3 vs 1.35e-3; > 4: 3.3e-5 vs 3.2e-5); a relative std floor on the log scale would bind on 94% of internet buckets (hence an absolute log floor).
+
+**Review (before verification):** `/simplify` (4 reviewers): one log-scale rule instead of two, single catalog-order z loop, `_mean_std` shared by both fits, curve fit selects 2 columns before `drop_nulls` (avoids a full-width copy), stale "factor" wording; refactor verified byte-identical on the fitted reference. Skipped: faster quantiles (< 1 s), `Domain.kpi()` in the validator (raises KeyError, not a validation error), `curve=` on `flat_baseline` (one use). `/code-review` medium: 2 important fixed — **a dead cell was absorbed as a new level after a few days and stopped alarming** (offset now over hours with traffic only; test), **level offset diluted by rows without a baseline** (per-KPI counts; test); nits fixed: `cfg` threaded through the KPI lists, validator rejects `load == kpi` / a derived load, sidecar ordering. Docs nit handled here.
+
+**Tests run and results:**
+- `make check`: 432 passed, coverage 92.45%.
+- `make baseline`: 24,192 buckets + 100 load bins from 28 training days. `make features ARGS="--split validation --inject"`: 290,304 rows × 25 features, 0 gaps, 1.8 s, 530 MiB. 0 null/NaN/inf in train and validation features.
+- Clean validation weeks, share of rows with bad > 4 (old → new): latency 9.2e-3 → 6.9e-6, drop rate 4.8e-3 → not detected, load 1.0e-2 → 1.0e-2, internet 2.2e-2 → 3.4e-2, voice 1.3e-3 → 5.1e-3, SMS 1.5e-3 → 8.7e-3 (`log1p` stretches the drop side).
+- `make train` (MLflow `detector-tuning`, stack running), three feature versions, validation weeks, ≤ 1 false incident/day:
+
+| Detector | Step 6 (`main`) | Load curve only (no `log1p`) | **Step 6b (final)** |
+|---|---|---|---|
+| z-score | infeasible (14/57 at 11.9/day at the cap) | infeasible (7/57) | infeasible (35/57 at 1.79/day at the cap) |
+| Isolation Forest | 6/57, 0.93/day | 5/57, 1.00/day | **32/57, 0.93/day**, KM median 10 [2, n/r] |
+| Autoencoder | 14/57, 0.29/day | 24/57, 0.29/day | **32/57, 0.00/day**, KM median 9 [6, n/r] |
+
+  Per fault type (final): Isolation Forest site_power 14/17, cell_outage 6/11, backhaul 6/8, congestion 2/12, config_push 4/9; autoencoder 13/17, 5/11, 8/8, 0/12, 6/9. Studies 1ba17f05 / 6a2b8311 / 90ccf60f; ≤ 943 MiB of 1,536, ≤ 241 s of 900. `log1p` kept: it makes clean false drops more frequent but turns outages into large deviations (z-score at the cap 7 → 35 of 57).
+
+**Decisions made:** `DECISIONS.md` 2026-11-26 (KPI deviation features; empirical tail z dropped).
+
+**Open items:**
+- Congestion barely detected (0–2/12): `load_ratio` against the clock is noisy on the validation weeks (1% of clean rows bad > 4). Candidate fixes: level-adjust load like internet, or judge it against the real traffic's own z.
+- z-score still infeasible, so Step 7's gate compares against an infeasible baseline: decide how the gate treats that.
+- Kafka container in a restart loop on 2026-11-26 (not needed for this step; check before Step 8).
+- Per-cell load curves would be needed on a real network (write-up).
+
 ## 2026-11-25 — Milestone 2, step 6: Optuna tuning + MLflow tracking
 
 **What was built:**

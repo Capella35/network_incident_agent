@@ -43,7 +43,9 @@ def test_gap_rows_get_no_score(name: str, train: pl.DataFrame) -> None:
 def test_zscore_is_the_worst_oriented_kpi(normal_with_outage: pl.DataFrame) -> None:
     scored = det.build("zscore", CFG).score(normal_with_outage)
     oriented = normal_with_outage.select(
-        pl.max_horizontal(features.oriented([k.name for k in features.feature_kpis()]))
+        pl.max_horizontal(
+            features.oriented([k.name for k in features.feature_kpis(features.load_config())])
+        )
     )
     assert scored["score"].to_list() == oriented.to_series().to_list()
 
@@ -51,7 +53,7 @@ def test_zscore_is_the_worst_oriented_kpi(normal_with_outage: pl.DataFrame) -> N
 def test_autoencoder_contributions_are_per_kpi(train: pl.DataFrame) -> None:
     scored = det.build("autoencoder", CFG).fit(train).score(train)
     contrib = [c for c in scored.columns if c.startswith(det.CONTRIB)]
-    assert contrib == [det.CONTRIB + k.name for k in features.feature_kpis()]
+    assert contrib == [det.CONTRIB + k.name for k in features.feature_kpis(features.load_config())]
     assert (scored.select(contrib).min_horizontal() >= 0).all()
 
 

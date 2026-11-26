@@ -11,7 +11,7 @@ The project lives in `~/Projects/network_incident_agent` (moved 2026-11-14). Kee
 Milan traffic replay + fault injector → **Kafka** (`telemetry.raw`) → **Spark Structured Streaming** (windowed features + promoted detector) → Kafka `alarms` → **correlator** (topology rules + graph ranking) → incident + root node → **XGBoost** classifier → **PostgreSQL** → **Grafana** (KPIs, health), **Streamlit** console (human approve/correct/close), **ops agent** (Groq API, read-only tools). **MLflow** tracks every model run, holds the registry, and runs the promotion gate. Everything starts with `docker compose up`. Full diagram and component table: `specs/00-overview.md`.
 
 ## Status and commands
-Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `specs/milestones/milestone-2.md`; Steps 1–6 done). Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
+Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `specs/milestones/milestone-2.md`; Steps 1–6b done). Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
 
 | Task | Command |
 |---|---|
@@ -24,7 +24,7 @@ Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `spe
 | Rebuild only the synthetic topology | `make topology` |
 | Fit modeled cell capacity on training days | `make calibrate` |
 | Write a split's SYNTHETIC fault schedule (ground truth, read only by `src/evaluation/`) | `make inject ARGS="--split validation"` |
-| Fit the seasonal KPI baseline (cell, weekday, hour) on training weeks; refit after `make calibrate` | `make baseline` |
+| Fit the detection reference on training weeks: seasonal KPI baseline (cell, weekday, hour) + MODELED latency-vs-load curve; refit after `make calibrate` or a `features.yaml` change | `make baseline` |
 | Compute a split's detection features and report time + memory | `make features ARGS="--split validation --inject"` |
 | Train each detector candidate on training weeks, score a validation day, log to MLflow (stack running) | `make candidates` (`ARGS="--score-day 2013-12-02"`) |
 | Tune each detector with Optuna on validation weeks (≤ 1 false incident/day), log studies + best model + comparison table to MLflow (stack running) | `make train` (`python -m models.tune --compare` for the table only) |
@@ -41,7 +41,7 @@ Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `spe
 
 Host ports, all on `127.0.0.1`: Postgres 5433 (5432 is often taken by a local Postgres), MLflow 5001, Grafana 3000 (user `admin`), Kafka 9092.
 
-Planned, not built yet: Milestone 2 Steps 6b–11 (KPI deviation features, promotion, the Spark detector job, `make detect-check`) and everything after. Don't claim it works until it exists.
+Planned, not built yet: Milestone 2 Steps 7–11 (promotion, the Spark detector job, `make detect-check`) and everything after. Don't claim it works until it exists.
 
 **Laptop limit:** 8 GB RAM total. Keep containers memory-capped; Spark runs only under its Compose profile.
 

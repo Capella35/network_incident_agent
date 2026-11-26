@@ -34,7 +34,7 @@ def features_for(data_dir: Path, days: list[date], *, inject: bool = False) -> O
     if any((b - a).days != 1 for a, b in itertools.pairwise(days)):
         raise ValueError(f"days must be consecutive ({days[0]}..{days[-1]} has a gap)")
     cfg = features.load_config()
-    base = baseline.load(data_dir)
+    ref = baseline.load(data_dir)
     split = splits.split_of(days[0])
     paths = data_prep.Paths(data_dir)
     history = [
@@ -45,7 +45,7 @@ def features_for(data_dir: Path, days: list[date], *, inject: bool = False) -> O
     earlier = [d for d in history if splits.split_of(d) is not split]  # a prefix: date order
     loaded = replay.telemetry_for(data_dir, [*history[len(earlier) :], *days], inject=inject)
     parts = [replay.telemetry_for(data_dir, earlier).rows] if earlier else []
-    frame = features.compute(pl.concat([*parts, loaded.rows]), base, cfg).filter(
+    frame = features.compute(pl.concat([*parts, loaded.rows]), ref, cfg).filter(
         features.LOCAL_TIME.dt.date().is_in(days)
     )
     return OfflineFeatures(frame, tuple(history), loaded.n_faults)

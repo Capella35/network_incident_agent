@@ -34,7 +34,7 @@ TRAIN_INTERVALS = 144 * 21  # three weeks from T0, all training days: 18 samples
 
 
 @cache
-def _baseline() -> pl.DataFrame:
+def _baseline() -> features.Reference:
     return baseline.fit(normal_rows(TRAIN_INTERVALS, seed=1), features.load_config())
 
 

@@ -98,8 +98,9 @@ class Detector(ABC):
         self.p = p
         # Fixed at construction, so a logged model keeps scoring the KPIs and columns it was
         # trained on even if the catalog or features.yaml changes later.
-        self.kpis = [k.name for k in features.feature_kpis()]
-        self.columns = features.feature_columns(features.load_config())
+        cfg = features.load_config()
+        self.kpis = [k.name for k in features.feature_kpis(cfg)]
+        self.columns = features.feature_columns(cfg)
 
     @abstractmethod
     def fit(self, train: pl.DataFrame) -> Detector: ...

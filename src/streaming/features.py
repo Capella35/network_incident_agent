@@ -1,29 +1,40 @@
 """Causal per-cell detection features (milestone 2, step 3; specs/03-detection.md).
 
 Input: telemetry rows shaped like `producer.replay.telemetry_for` output (one row per cell and
-interval), and the seasonal baseline (`streaming.baseline`). For every real and MODELED KPI in the
-catalog, per cell and interval *t*, using only intervals <= *t*:
+interval), and the `Reference` fitted on training weeks (`streaming.baseline`). For every
+detected KPI (the catalog's real and MODELED KPIs minus `not_detected`), per cell and interval
+*t*, using only intervals <= *t*:
 
-- `<kpi>_z`: deviation from the baseline for that cell, weekday, and hour (Europe/Rome), clipped.
-  For real (activity) KPIs the baseline mean and std are first scaled by the cell's recent level
-  (DECISIONS.md 2026-11-24, option b): for the same hour over the previous `level.days` local
-  days, actual sum / baseline-mean sum. A lasting level shift (real Milan internet, December
-  2013) becomes normal after about a week; a fault lasting hours barely moves it. With fewer than
-  `level.min_days` days of history, the plain seasonal z. Not for MODELED KPIs: they follow load
-  nonlinearly (fixed base latency, logistic drops), so a multiplicative level misfits them
-  (measured: more false highs);
+- `<kpi>_z`, clipped, on the KPI's detection scale (`with_kpis_and_bucket`):
+  - judged against the clock (every detected KPI except the load-curve one): deviation from the
+    seasonal baseline for that cell, weekday, and hour (Europe/Rome). Real (activity) KPIs are
+    on a `log1p` scale (their deviations are right-skewed; DECISIONS.md "Skewed KPI
+    deviations") and their baseline mean is shifted by the cell's recent level (DECISIONS.md
+    2026-11-24, option b): the mean deviation over the same hour of the previous `level.days`
+    local days. On the log scale that shift is a multiplicative level. A lasting level shift
+    (real Milan internet, December 2013) becomes normal after about a week; a fault lasting
+    hours barely moves it. With fewer than `level.min_days` days of history, no shift. Not for
+    MODELED KPIs: they follow load nonlinearly, so a level misfits them (measured: more false
+    highs);
+  - judged against the load (`load_curve.kpi`, MODELED latency): deviation of log(latency)
+    from what the training weeks show at the same `load_curve.load` (equal-count load bins,
+    one curve for all cells because load is already per-cell capacity-normalized). A busy
+    hour's expected queueing delay is normal; latency high for the load is not (DECISIONS.md
+    2026-11-26);
 - `<kpi>_bad`: `_z` oriented so that positive is always worse (the KPI's bad direction);
 - `<kpi>_z_mean_<w>`: mean of `_z` over the last *w* intervals (by time, so a missing interval
   shortens the window instead of reaching further back);
 - `<kpi>_z_delta`: `_z(t) - _z(t - 1 interval)`; null if that interval is missing or a gap.
 
 Data-gap rows get no features at all (null), and windows skip them: a gap alone never alarms.
-A cell with no baseline bucket (no training data) gets null features. Imports only `common`, so
-the Spark job (step 8) can call `compute` without the producer.
+A cell with no baseline bucket (no training data) gets null clock features; the load curve is
+shared by every cell. Imports only `common`, so the Spark job (step 8) can call `compute`
+without the producer.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import cache
 from importlib.resources import files
 
@@ -43,10 +54,17 @@ _ORIENTATION = {BadDirection.DROP: -1.0, BadDirection.HIGH: 1.0}  # EITHER: |z|
 class BaselineParams(FrozenModel):
     std_floor_abs: float = Field(gt=0)
     std_floor_rel: float = Field(ge=0)
+    std_floor_log: float = Field(gt=0)  # for KPIs on a log scale: a relative change
+
+
+class LoadCurveParams(FrozenModel):
+    kpi: str  # MODELED KPI judged against load instead of the clock
+    load: str
+    bins: int = Field(ge=2)
 
 
 class LevelParams(FrozenModel):
-    days: PositiveInt  # trailing local days for the level factor (the current day excluded)
+    days: PositiveInt  # trailing local days for the level offset (the current day excluded)
     min_days: PositiveInt  # fewer days of history: no level-adjusted features
 
     @model_validator(mode="after")
@@ -60,6 +78,8 @@ class Config(FrozenModel):
     windows: tuple[PositiveInt, ...] = Field(min_length=1)
     baseline: BaselineParams
     level: LevelParams
+    load_curve: LoadCurveParams
+    not_detected: tuple[str, ...]  # KPIs left out of detection, with the reason in the YAML
     z_clip: float = Field(gt=0)
 
     @model_validator(mode="after")
@@ -68,20 +88,83 @@ class Config(FrozenModel):
             raise ValueError("windows must be distinct")
         return self
 
+    @model_validator(mode="after")
+    def _known_kpis(self) -> Config:
+        domain = load_domain()
+        curve = self.load_curve
+        if unknown := {curve.kpi, curve.load, *self.not_detected} - set(domain.kpis):
+            raise ValueError(f"unknown KPIs {sorted(unknown)}")
+        if domain.kpi(curve.kpi).source is not KpiSource.MODELED:
+            raise ValueError(f"load_curve.kpi {curve.kpi!r} must be a MODELED KPI")
+        if curve.load == curve.kpi or domain.kpi(curve.load).source is KpiSource.DERIVED:
+            raise ValueError(f"load_curve.load {curve.load!r}: a measured KPI other than kpi")
+        if curve.kpi in self.not_detected:
+            raise ValueError(f"load_curve.kpi {curve.kpi!r} must be detected")
+        return self
+
+
+@dataclass(frozen=True)
+class Reference:
+    """What the features are judged against, fitted on clean training weeks (MODELED for the
+    MODELED KPIs). `seasonal`: one row per `BUCKET`, `<kpi>_mean` / `<kpi>_std` for every
+    `clock_kpis(cfg)` KPI on its detection scale. `load_curve`: one row per load bin, sorted:
+    `upper` (the bin's inclusive upper load edge; the last bin also takes any load above it),
+    `mean`, `std` of the curve KPI on its detection scale."""
+
+    seasonal: pl.DataFrame
+    load_curve: pl.DataFrame
+
 
 @cache
 def load_config() -> Config:
     return read_config(Config, files("streaming").joinpath("features.yaml"))
 
 
-def feature_kpis() -> list[Kpi]:
-    """KPIs measured per cell (real and modeled); derived ones are what the features compute."""
-    return [k for k in load_domain().kpis.values() if k.source is not KpiSource.DERIVED]
+def feature_kpis(cfg: Config) -> list[Kpi]:
+    """KPIs detected per cell: real and modeled ones (derived ones are what the features
+    compute), minus `cfg.not_detected`."""
+    skip = set(cfg.not_detected)
+    return [
+        k
+        for k in load_domain().kpis.values()
+        if k.source is not KpiSource.DERIVED and k.name not in skip
+    ]
 
 
-def level_kpis() -> list[Kpi]:
-    """KPIs whose z is level-adjusted: real activity counts, which scale with level."""
-    return [k for k in feature_kpis() if k.source is KpiSource.REAL]
+def clock_kpis(cfg: Config) -> list[Kpi]:
+    """Detected KPIs judged against the seasonal baseline (all but the load-curve one)."""
+    return [k for k in feature_kpis(cfg) if k.name != cfg.load_curve.kpi]
+
+
+def level_kpis(cfg: Config) -> list[Kpi]:
+    """KPIs whose z is level-adjusted: real activity counts, which scale with level. On their
+    log1p scale the additive level offset is a multiplicative level."""
+    return [k for k in feature_kpis(cfg) if k.source is KpiSource.REAL]
+
+
+def _log_scale(kpi: Kpi, cfg: Config) -> bool:
+    """Whether a KPI is detected on a log scale (the one rule `detection_value` and
+    `std_floor` share)."""
+    return kpi.source is KpiSource.REAL or kpi.name == cfg.load_curve.kpi
+
+
+def detection_value(kpi: Kpi, cfg: Config) -> pl.Expr:
+    """The KPI's column on its detection scale: real KPIs `log1p` (right-skewed counts; zero
+    traffic stays finite), the load-curve KPI `log` (MODELED latency is always > 0), the rest
+    unchanged."""
+    col = pl.col(kpi.name)
+    if not _log_scale(kpi, cfg):
+        return col
+    return col.log1p() if kpi.source is KpiSource.REAL else col.log()
+
+
+def std_floor(kpi: Kpi, mean: pl.Expr, cfg: Config) -> pl.Expr:
+    """The smallest std a KPI's z may divide by, so near-constant KPIs don't turn noise into
+    huge z-scores: on a log scale a fixed relative change, else a share of |mean|."""
+    floor = cfg.baseline
+    if _log_scale(kpi, cfg):
+        return pl.lit(floor.std_floor_log)
+    return pl.max_horizontal(mean.abs() * floor.std_floor_rel, pl.lit(floor.std_floor_abs))
 
 
 def feature_columns_by_kpi(cfg: Config) -> dict[str, list[str]]:
@@ -92,7 +175,7 @@ def feature_columns_by_kpi(cfg: Config) -> dict[str, list[str]]:
             *[f"{k.name}_z_mean_{w}" for w in cfg.windows],
             f"{k.name}_z_delta",
         ]
-        for k in feature_kpis()
+        for k in feature_kpis(cfg)
     }
 
 
@@ -106,11 +189,22 @@ def oriented(kpis: list[str]) -> list[pl.Expr]:
     return [pl.col(f"{k}_bad").alias(k) for k in kpis]
 
 
-def with_kpis_and_bucket(rows: pl.DataFrame) -> pl.DataFrame:
-    """Add the real KPI columns and the seasonal bucket (weekday 1-7, hour, Europe/Rome)."""
+def with_kpis_and_bucket(rows: pl.DataFrame, cfg: Config) -> pl.DataFrame:
+    """Add the real KPI columns and the seasonal bucket (weekday 1-7, hour, Europe/Rome), with
+    every detected KPI on its detection scale (`detection_value`)."""
     return telemetry.add_real_kpis(rows).with_columns(
-        LOCAL_TIME.dt.weekday().alias("weekday"), LOCAL_TIME.dt.hour().alias("hour")
+        *[detection_value(k, cfg).alias(k.name) for k in feature_kpis(cfg)],
+        LOCAL_TIME.dt.weekday().alias("weekday"),
+        LOCAL_TIME.dt.hour().alias("hour"),
     )
+
+
+def load_bin(uppers: pl.Series, cfg: Config) -> pl.Expr:
+    """Index of the load bin (sorted inclusive upper edges `uppers`) each row's load falls in;
+    the last bin also takes any load above its edge; null load: null."""
+    load = pl.col(cfg.load_curve.load)
+    edges = pl.lit(uppers.head(-1))
+    return pl.when(load.is_not_null()).then(edges.search_sorted(load, side="left"))
 
 
 def _oriented(kpi: Kpi, z: pl.Expr) -> pl.Expr:
@@ -119,9 +213,12 @@ def _oriented(kpi: Kpi, z: pl.Expr) -> pl.Expr:
     return z * _ORIENTATION[kpi.bad_direction]
 
 
-def _level_factors(frame: pl.DataFrame, kpis: list[Kpi], cfg: Config) -> pl.DataFrame:
-    """Per (cell, local day, hour) and KPI: actual / baseline-mean over the same hour of the
-    previous `cfg.level.days` local days (the current day excluded, so it stays causal)."""
+def _level_offsets(frame: pl.DataFrame, kpis: list[Kpi], cfg: Config) -> pl.DataFrame:
+    """Per (cell, local day, hour) and KPI: mean of (value - baseline mean) over the same hour
+    of the previous `cfg.level.days` local days (the current day excluded, so it stays causal);
+    null with fewer than `cfg.level.min_days` such days. Only rows with traffic (log1p > 0) and
+    a baseline count: a cell that stays dead is an outage, never a new level, so it keeps
+    alarming."""
     group = ("cell_id", "hour")
 
     def trailing_sum(e: pl.Expr) -> pl.Expr:
@@ -132,77 +229,79 @@ def _level_factors(frame: pl.DataFrame, kpis: list[Kpi], cfg: Config) -> pl.Data
         frame.filter(~pl.col("data_gap"))
         .group_by("cell_id", "local_date", "hour")
         .agg(
-            pl.lit(1).alias("_day"),
-            *[pl.col(k.name).sum().alias(f"{k.name}_a") for k in kpis],
-            *[pl.col(f"{k.name}_mean").sum().alias(f"{k.name}_b") for k in kpis],
+            *[
+                e
+                for k in kpis
+                for dev in [
+                    pl.when(pl.col(k.name) > 0).then(pl.col(k.name) - pl.col(f"{k.name}_mean"))
+                ]
+                for e in (
+                    dev.sum().alias(f"{k.name}_sum"),
+                    dev.count().alias(f"{k.name}_n"),
+                    (dev.count() > 0).cast(pl.Int32).alias(f"{k.name}_days"),
+                )
+            ],
         )
         .sort(*group, "local_date")
     )
-    days = trailing_sum(pl.col("_day"))
-    factors = []
-    for k in kpis:
-        a, b = trailing_sum(pl.col(f"{k.name}_a")), trailing_sum(pl.col(f"{k.name}_b"))
-        factors.append(
-            pl.when((days >= cfg.level.min_days) & (a > 0) & (b > 0))
-            .then(a / b)
-            .alias(f"{k.name}_level")
-        )
-    return hourly.select("cell_id", "local_date", "hour", *factors)
+    offsets = [
+        pl.when(trailing_sum(pl.col(f"{k.name}_days")) >= cfg.level.min_days)
+        .then(trailing_sum(pl.col(f"{k.name}_sum")) / trailing_sum(pl.col(f"{k.name}_n")))
+        .alias(f"{k.name}_level")
+        for k in kpis
+    ]
+    return hourly.select("cell_id", "local_date", "hour", *offsets)
 
 
-def _scaled_z(kpi: Kpi, level: pl.Expr, cfg: Config) -> pl.Expr:
-    """z against the seasonal baseline scaled by `level`; null on gap rows, clipped. The std
-    floor is applied again after scaling, so a small level cannot shrink the std to ~0; any
-    non-finite result is null (so the caller's seasonal fallback applies)."""
-    floor = cfg.baseline
-    mean = pl.col(f"{kpi.name}_mean") * level
-    std = pl.max_horizontal(
-        pl.col(f"{kpi.name}_std") * level,
-        mean.abs() * floor.std_floor_rel,
-        pl.lit(floor.std_floor_abs),
-    )
-    z = (pl.col(kpi.name) - mean) / std
+def _z(value: pl.Expr, mean: pl.Expr, std: pl.Expr, cfg: Config) -> pl.Expr:
+    """(value - mean) / std; null on gap rows and where not finite, clipped."""
+    z = (value - mean) / std
     return pl.when(~pl.col("data_gap") & z.is_finite()).then(z).clip(-cfg.z_clip, cfg.z_clip)
 
 
-def _z_frame(rows: pl.DataFrame, baseline: pl.DataFrame, cfg: Config) -> pl.DataFrame:
+def _reference(kpi: Kpi, ref: Reference, cfg: Config, *, levelled: bool) -> tuple[pl.Expr, pl.Expr]:
+    """(mean, std) a KPI's value is judged against: its load bin's for the load-curve KPI,
+    else its seasonal bucket's, the mean shifted by the level offset when `levelled`."""
+    if kpi.name == cfg.load_curve.kpi:
+        b = load_bin(ref.load_curve["upper"], cfg)
+        return pl.lit(ref.load_curve["mean"]).gather(b), pl.lit(ref.load_curve["std"]).gather(b)
+    mean = pl.col(f"{kpi.name}_mean")
+    if levelled:
+        mean = mean + pl.col(f"{kpi.name}_level").fill_null(0.0)
+    return mean, pl.col(f"{kpi.name}_std")
+
+
+def _z_frame(rows: pl.DataFrame, ref: Reference, cfg: Config) -> pl.DataFrame:
     """`KEYS` + `<kpi>_z`, sorted by (cell_id, interval_start). Kept apart from `compute` so the
-    wide joined frame (telemetry, baseline, level factors) is freed before the windows run."""
+    wide joined frame (telemetry, baseline, level offsets) is freed before the windows run."""
     frame = (
-        with_kpis_and_bucket(rows)
-        .join(baseline, on=BUCKET, how="left")
+        with_kpis_and_bucket(rows, cfg)
+        .join(ref.seasonal, on=BUCKET, how="left")
         .with_columns(LOCAL_TIME.dt.date().alias("local_date"))
     )
+    levelled = level_kpis(cfg)
     frame = frame.join(
-        _level_factors(frame, level_kpis(), cfg), on=["cell_id", "local_date", "hour"], how="left"
+        _level_offsets(frame, levelled, cfg), on=["cell_id", "local_date", "hour"], how="left"
     )
-    level = {k.name for k in level_kpis()}
-    seasonal = pl.lit(1.0)
-    return frame.select(
-        *KEYS,
-        *[
-            (
-                pl.coalesce(
-                    _scaled_z(k, pl.col(f"{k.name}_level"), cfg), _scaled_z(k, seasonal, cfg)
-                )
-                if k.name in level
-                else _scaled_z(k, seasonal, cfg)
-            ).alias(f"{k.name}_z")
-            for k in feature_kpis()
-        ],
-    ).sort("cell_id", "interval_start")
+    z = [
+        _z(pl.col(k.name), *_reference(k, ref, cfg, levelled=k in levelled), cfg).alias(
+            f"{k.name}_z"
+        )
+        for k in feature_kpis(cfg)
+    ]
+    return frame.select(*KEYS, *z).sort("cell_id", "interval_start")
 
 
-def compute(rows: pl.DataFrame, baseline: pl.DataFrame, cfg: Config) -> pl.DataFrame:
+def compute(rows: pl.DataFrame, ref: Reference, cfg: Config) -> pl.DataFrame:
     """`KEYS` + `feature_columns(cfg)`, sorted by (cell_id, interval_start). Causal: a row's
     features depend only on rows of the same cell at or before it. Level-adjusted z needs
-    `cfg.level.min_days` days of history in `rows` before a day (else seasonal z)."""
+    `cfg.level.min_days` days of history in `rows` before a day (else no level shift)."""
     ok = ~pl.col("data_gap")
     prev_is_adjacent = (
         pl.col("interval_start") - pl.col("interval_start").shift(1).over("cell_id")
     ) == telemetry.INTERVAL
     derived: list[pl.Expr] = []
-    for k in feature_kpis():
+    for k in feature_kpis(cfg):
         z = pl.col(f"{k.name}_z")
         derived.append(_oriented(k, z).alias(f"{k.name}_bad"))
         derived += [
@@ -220,4 +319,4 @@ def compute(rows: pl.DataFrame, baseline: pl.DataFrame, cfg: Config) -> pl.DataF
             .then(z - z.shift(1).over("cell_id"))
             .alias(f"{k.name}_z_delta")
         )
-    return _z_frame(rows, baseline, cfg).with_columns(derived).select(*KEYS, *feature_columns(cfg))
+    return _z_frame(rows, ref, cfg).with_columns(derived).select(*KEYS, *feature_columns(cfg))
