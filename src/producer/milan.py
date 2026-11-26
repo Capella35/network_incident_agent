@@ -7,6 +7,7 @@ a missing (square, interval) row = 0 with `data_gap = true`; timestamps in UTC.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from pathlib import Path
@@ -59,6 +60,11 @@ def day_intervals(day: date) -> list[datetime]:
         out.append(t)
         t += INTERVAL
     return out
+
+
+def window(days: Sequence[date]) -> tuple[datetime, datetime]:
+    """[start, end) in UTC of consecutive Milan local `days`."""
+    return day_intervals(days[0])[0], day_intervals(days[-1])[-1] + INTERVAL
 
 
 def _scan(path: Path) -> pl.LazyFrame:

@@ -254,6 +254,10 @@ class Index:
         """Node IDs of one type, sorted."""
         return self._by_type.get(node_type, [])
 
+    def parent(self, node_id: str) -> str | None:
+        """The node's parent ID (None at the top of the tree)."""
+        return self.nodes[node_id].parent_id
+
     def cells_under(self, node_id: str) -> tuple[str, ...]:
         """The cells at or below a node, sorted."""
         if self.nodes[node_id].node_type == self.cell_type:

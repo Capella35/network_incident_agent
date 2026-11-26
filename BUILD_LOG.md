@@ -20,6 +20,31 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-25 — Milestone 2, step 5: evaluation
+
+**What was built:**
+- New package `src/evaluation/` (the only ground-truth reader, Rule 6): `ground_truth.py` (reads the schedule `make inject` wrote, with its fingerprint), `metrics.py` (provisional M2 incidents: same aggregation node, consecutive alarms ≤ 1 interval apart; matching: overlap ± 1 interval **and a shared cell**; per-fault outcome; **Kaplan–Meier** median delay with 95% CI, missed faults censored; unobservable faults = every cell-interval a gap; false incidents/day), `report.py` (`score()`: the Rule-6-safe entry point for Step 6; `make evaluate`: z-score dummy at a threshold, Markdown report, MLflow run in `detector-evaluation` with overall + per-type metrics, `report.md` and `fault_outcomes.csv`).
+- Shared helpers: `injector.ground_truth_path` (the one place the file name is built), `milan.window(days)`, `topology.Index.parent`, `models.tracking.start_run` (run by experiment ID; `candidates` uses it too, so no process-global experiment leaks between runs or tests), `tests/conftest.py::local_mlflow` (moved from the models tests).
+- Hand-checked 1-day fixture (`tests/evaluation/conftest.py`): hit, early hit (tolerance), late hit, miss, unobservable (gap), two overlapping faults in one incident, three false incidents (one split by a 2-interval gap); every outcome, incident, KM median and CI bound worked out in comments and asserted.
+
+**Review (before verification):**
+- `/simplify`, 4 reviewers. Applied: shared ground-truth path, `milan.window`, `Index.parent`, `score()` entry point for Step 6, `tracking.start_run` instead of patching MLflow's private global in the fixture, false incidents compared only against faults sharing a cell, gap check only for misses, small test cleanups. Skipped: a shared test topology builder (layouts differ, the hand check depends on this one); caching observability and one-join alarm matching across Optuna trials (Step 6).
+- `/code-review` (medium), 6 findings. **Important, fixed:** the CI bound was reported as reached when S hit 0 (infinite variance; R gives NA), so CIs were too narrow; now "n/a". Nits fixed: non-consecutive days refused; unknown alarm sites raise a clear ValueError; per-type metrics and CI bounds logged to MLflow; the lower-median tie convention documented and its test renamed. Skipped: string literals for entity/fault names in test fixtures (same as the existing injector tests; keeps the hand-check table readable).
+
+**Tests run and results:**
+- `make check`: 410 passed, coverage 91.96%.
+- Done when: the report runs on the validation ground truth with a dummy detector (z-score, threshold 4; MLflow to a throwaway file store because Docker was not running): 14 days 2013-12-02 → 12-15, 57 SYNTHETIC faults (0 unobservable), 56 detected (98.2%; cell_outage 10/11), KM median delay 0 [0, 0] intervals, 921 incidents, **855 false (61.07/day)**; 6.8 s, 676 MiB peak. Every number checked by hand on the 1-day fixture (tests).
+- Not tuned: threshold 4 is a dummy; the false-incident budget (≤ 1/day) is Step 6's constraint.
+
+**Decisions made:** (also in DECISIONS.md)
+- Detection delay = Kaplan–Meier median with censoring, 95% CI (user's choice); bar unchanged, note next to it (Rule 5).
+- Matching needs a shared cell; unobservable faults reported but not scored; grouping reduces to the aggregation node.
+
+**Open items:**
+- Run `make evaluate ARGS="--threshold 4"` once against the stack's MLflow (Docker was down this session).
+- Step 6: KM median is "not reached" when fewer than half of faults are detected; the objective needs a rule for that (e.g. rank by detection rate first, as planned). Cache observability per study.
+- The z-score at threshold 4 gives 61 false incidents/day: busy peaks and the holiday days are the first suspects (Step 6 tuning, eval-failure-reviewer).
+
 ## 2026-11-24 — Milestone 2, step 4: detector candidates (+ option b for the internet level shift)
 
 **What was built:**
