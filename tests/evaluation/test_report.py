@@ -12,6 +12,7 @@ from evaluation import ground_truth, metrics, report
 from producer import injector
 from streaming import features, offline
 from tests.evaluation.conftest import DAY, FAULTS, INDEX, SITE, SLOTS, alarms, gaps, t
+from tests.factories import flat_baseline
 
 SPLIT = splits.Split.VALIDATION
 
@@ -83,7 +84,9 @@ def test_run_scores_evaluates_and_logs_to_mlflow(
 
     def fake(_d: Path, days: list[date], *, inject: bool = False) -> offline.OfflineFeatures:
         seen.append((days, inject))
-        return offline.OfflineFeatures(_feature_day({("CELL-1-1", 11)}), (), n_faults=7)
+        return offline.OfflineFeatures(
+            _feature_day({("CELL-1-1", 11)}), (), n_faults=7, reference=flat_baseline(["CELL-1-1"])
+        )
 
     monkeypatch.setattr(report.data_prep, "require_processed_days", lambda *_a: {DAY: Path()})
     monkeypatch.setattr(report.offline, "features_for", fake)

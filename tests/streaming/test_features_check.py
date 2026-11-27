@@ -21,7 +21,9 @@ def test_main_reports(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCapture
 
     def fake(_d: Path, ds: list[date], *, inject: bool) -> offline.OfflineFeatures:
         seen.append((ds, inject))
-        return offline.OfflineFeatures(frame, (date(2013, 12, 1),), n_faults=2)
+        return offline.OfflineFeatures(
+            frame, (date(2013, 12, 1),), n_faults=2, reference=flat_baseline(["CELL-1-1"])
+        )
 
     monkeypatch.setattr(fc.offline, "features_for", fake)
     with caplog.at_level(logging.INFO):

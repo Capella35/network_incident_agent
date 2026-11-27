@@ -22,7 +22,7 @@ from pathlib import Path
 import mlflow
 import polars as pl
 
-from common import process, splits
+from common import process
 from evaluation import metrics, report
 from models import cli, detectors, tracking, tune
 
@@ -88,13 +88,9 @@ def run(data_dir: Path) -> str:
     with tracking.start_run(tune.EXPERIMENT, run_name=name):
         mlflow.set_tags(
             {
+                **tracking.validation_tags(v.snapshot, fingerprint),
                 "role": "ensemble",
                 "members": ",".join(f"{n}:{s.info.run_id}" for n, s in sorted(studies.items())),
-                "data_snapshot": v.snapshot,
-                "code_version": tracking.code_version(),
-                "fault_schedule_fingerprint": fingerprint,
-                "split": str(splits.Split.VALIDATION),
-                "synthetic_faults": "yes",
             }
         )
         mlflow.log_metrics(

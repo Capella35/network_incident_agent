@@ -125,6 +125,15 @@ class Reference:
     load_curve: pl.DataFrame
 
 
+@dataclass(frozen=True)
+class Spec:
+    """What features are computed from, `compute(rows, reference, config)`, kept together so a
+    packaged detector (models.tracking) carries the exact pair it was tuned and scored with."""
+
+    config: Config
+    reference: Reference
+
+
 @cache
 def load_config() -> Config:
     return read_config(Config, files("streaming").joinpath("features.yaml"))

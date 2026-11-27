@@ -20,8 +20,9 @@ Trained offline on **training weeks** (`common.splits`, Rule 7):
 Optuna tunes window lengths, thresholds, contamination, latent size, and other hyperparameters on **validation weeks**. **Union (Step 6c):** the tuned Isolation Forest and autoencoder combined, a cell-interval alarming if either reaches its own threshold (`make union`); their misses are mostly different faults. Objective: **maximize detection rate and minimize delay, subject to ≤ 1 false incident per day**. Every trial is logged to MLflow; the trial budget and wall-clock timeout are fixed per study (guardrail R4).
 
 ## Promotion
-- The winner is registered in MLflow and promoted only through an **evaluation gate**: it must beat the z-score baseline on the validation objective (Definition of done, `00-overview.md`). Gate thresholds beyond that **(M2)**.
-- Rollback to the previous registered version is always possible; retraining is a reviewed event, never silent.
+- A **named** candidate (never picked automatically) is registered in MLflow as model `detector`, alias `champion`, only through an **evaluation gate** on the **validation weeks**: **≤ 1 false incident/day AND more faults caught than the incumbent** champion, both scored on the same validation days, fault schedule, and data snapshot; the first champion needs the cap only (`make promote ARGS="--candidate …"`; changed 2026-11-27, `00-overview.md` Rule 5 note). The test weeks are never used by the gate (Rule 7).
+- A registered version is one **package**: fitted detector, alarm threshold and settings, feature config, and the fitted reference the features are computed from (`features.Spec`), so a promotion or rollback moves all of them together.
+- Rollback (`make rollback`) moves `champion` to the version the current one replaced, and is logged; retraining is a reviewed event, never silent.
 - A **dead detector alerts** (no scores for N intervals while telemetry flows; N **(M2)**), shown on the system-health dashboard.
 
 ## Must never

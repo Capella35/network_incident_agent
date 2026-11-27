@@ -20,6 +20,33 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-27 — Milestone 2, step 7: promotion gate + first champion
+
+**What was built:**
+- Step 6d committed (`89d6047`, branch `m2/step-6d-congestion`, not pushed); Step 7 on `m2/step-7-promotion` from it.
+- `src/models/promote.py` + `make promote ARGS="--candidate …"` / `make rollback`: gate = ≤ 1.0 false incident/day AND more faults than the incumbent, on the validation weeks (same days, fault schedule, data snapshot); first champion: cap only. Named candidate only. Registered model `detector`, alias `champion`; version tags `validation.*` (the incumbent's numbers), `previous_champion`, `rolled_back`. Every decision and rollback logged to MLflow `detector-promotion`; refusal exits 2.
+- Package = one model version: detector, threshold, alarm settings, feature config, fitted reference (`features.Spec`, moved into `streaming.features`; `tracking.log_package` / `load_package`). `offline.features_for` / `tune.load_validation` now return the reference they used, so the package holds the exact object the gate scored with.
+- Shared: `tune.require_current` (cheap staleness check), `tracking.validation_tags` (provenance tags, now used by tune, ensemble, misses, promote).
+- Specs: Definition-of-done Rule 5 note (gate vs incumbent, not vs z-score), `03-detection.md` Promotion, milestone Step 7 rewritten.
+
+**Conflict raised before building (resolved by the user):** the brief asked for a gate judged on the test weeks and a one-time test run now. That conflicts with Rule 7 / `09-evals.md` (test weeks touched once, at M6; a test-week gate re-scores them at every promotion), and the test days are not downloaded (manual, Rule 3). The user chose: gate on validation, test run stays at M6.
+
+**Tests run and results:**
+- `make check`: 476 passed, coverage 93.17%.
+- `make promote ARGS="--candidate autoencoder"` (stack): first attempt failed at registration (MLflow 3 server rejects `create_model_version` with a logged-model URI; the local test store accepts it) → switched to `mlflow.register_model`; the failed run had no verdict tag and registered nothing (review fix working). Second run: **`detector` v1 = champion**, autoencoder study 2d41d0aa re-scored: **41/57, 0.29 false incidents/day, KM median 1 [0, 9]**, validation 2013-12-02..12-15, snapshot 80c52048. Loaded back via `models:/detector@champion`: threshold 3.047, alarm kpi_share 0.5 / max_kpis 3, feature config == current (`level.modeled: load_ratio`), reference == baseline on disk (24,192 buckets).
+- Found while checking: Step 6d rows in `evals/results-log.md` named snapshot 52a97ac6, but the studies ran on 80c52048 (the baseline refit changes the snapshot); corrected. Only the ablation is 52a97ac6.
+- Reviewed: `/simplify` (4 reviewers: the package now holds the scored reference, not a second `baseline.load`; cheap refusals before the validation load; frames freed + budget checked; one unpickle check; rollback logged; snapshot in the comparison; provenance helper). `/code-review` medium: 1 important fixed (any registry error read as "no champion" → only a missing model or alias does), 8 nits fixed (verdict tag set last; rollback logged before the alias moves; rolled-back study refused; incumbent tags parsed before data; exit 2 on refusal; second budget check after pickling; stronger before-data test; DECISIONS row). The `register_model` fix after verification was self-reviewed (3 lines).
+- Not built (noted): re-scoring the incumbent from its package when the validation set changes; a parquet copy of the reference outside the pickle.
+
+**Decisions made:** (also in DECISIONS.md 2026-11-27)
+- Candidate = autoencoder alone; union membership reopens only for a member added for a named fault class.
+- Gate vs incumbent on validation (Rule 5 change); z-score comparison stays a report.
+- Test weeks stay at M6.
+
+**Open items:**
+- Congestion still ≤ 2/12.
+- Step 8 loads `models:/detector@champion` with `tracking.load_package` and computes features from its spec (pyfunc input is features).
+
 ## 2026-11-27 — Milestone 2, step 6d: congestion — separation check, load judged like real KPIs, ablation
 
 **What was built:**

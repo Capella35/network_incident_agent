@@ -26,6 +26,7 @@ class OfflineFeatures:
     frame: pl.DataFrame  # features.KEYS + feature columns, only the requested days
     history_days: tuple[date, ...]  # days loaded only as history (not in `frame`)
     n_faults: int  # SYNTHETIC faults injected into the loaded days, history days included
+    reference: features.Reference  # what the features were judged against (`baseline.load`)
 
 
 def _require_consecutive(days: list[date]) -> None:
@@ -67,7 +68,7 @@ def features_for(data_dir: Path, days: list[date], *, inject: bool = False) -> O
     ref = baseline.load(data_dir)  # a missing or stale baseline fails before any telemetry
     loaded = telemetry_with_history(data_dir, days, inject=inject)
     return OfflineFeatures(
-        features_of(loaded.rows, days, ref), loaded.history_days, loaded.n_faults
+        features_of(loaded.rows, days, ref), loaded.history_days, loaded.n_faults, ref
     )
 
 

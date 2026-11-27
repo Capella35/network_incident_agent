@@ -1,4 +1,4 @@
-.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate train union diagnose separation inject clean \
+.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate train union diagnose separation promote rollback inject clean \
 	env-check up down ps logs spark-smoke db-migrate db-topology replay sink replay-check dashboards \
 	test-integration
 
@@ -72,6 +72,12 @@ union: env-check  ## Union of the latest tuned detectors (each at its own thresh
 
 diagnose: env-check  ## Why faults are missed: per-fault diagnosis of the latest tuned detectors on validation weeks (MLflow)
 	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m evaluation.misses $(ARGS)
+
+promote: env-check  ## Promotion gate on validation weeks: register + alias the named candidate if it passes (ARGS="--candidate autoencoder")
+	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m models.promote $(ARGS)
+
+rollback: env-check  ## Move the detector's champion alias back to the version it replaced
+	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m models.promote --rollback
 
 separation:  ## Does a signal separate a fault type from normal busy rows? Validation weeks, stdout (ARGS="--fault-type congestion")
 	MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m evaluation.separation $(ARGS)

@@ -11,7 +11,7 @@ The project lives in `~/Projects/network_incident_agent` (moved 2026-11-14). Kee
 Milan traffic replay + fault injector → **Kafka** (`telemetry.raw`) → **Spark Structured Streaming** (windowed features + promoted detector) → Kafka `alarms` → **correlator** (topology rules + graph ranking) → incident + root node → **XGBoost** classifier → **PostgreSQL** → **Grafana** (KPIs, health), **Streamlit** console (human approve/correct/close), **ops agent** (Groq API, read-only tools). **MLflow** tracks every model run, holds the registry, and runs the promotion gate. Everything starts with `docker compose up`. Full diagram and component table: `specs/00-overview.md`.
 
 ## Status and commands
-Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `specs/milestones/milestone-2.md`; Steps 1–6d done). Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
+Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `specs/milestones/milestone-2.md`; Steps 1–7 done). Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
 
 | Task | Command |
 |---|---|
@@ -30,6 +30,8 @@ Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `spe
 | Tune each detector with Optuna on validation weeks (≤ 1 false incident/day), log studies + best model + comparison table to MLflow (stack running) | `make train` (`python -m models.tune --compare` for the table only) |
 | Union of the latest tuned detectors vs each alone on validation weeks (ablation, MLflow; stack running) | `make union` |
 | Why faults are missed: per-fault diagnosis of the latest tuned detectors (MLflow; stack running) | `make diagnose` |
+| Promotion gate on validation weeks: register the named candidate as `detector@champion` if ≤ 1 false incident/day and more faults than the incumbent (exit 2 = refused; stack running) | `make promote ARGS="--candidate autoencoder"` |
+| Move `champion` back to the version it replaced (logged; stack running) | `make rollback` |
 | Does a signal separate a fault type from normal busy rows? Validation weeks, SYNTHETIC faults, with fault-free control windows; Markdown to stdout | `make separation ARGS="--fault-type congestion"` |
 | Validation report (z-score baseline at a threshold vs the SYNTHETIC ground truth; Markdown + MLflow, stack running) | `make evaluate ARGS="--threshold 4 [--start 2013-12-02 --end 2013-12-15]"` |
 | Start / stop the local stack (Kafka, Postgres, MLflow, Grafana); needs `.env` | `make up` / `make down` (`make ps`, `make logs`) |
@@ -44,7 +46,7 @@ Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `spe
 
 Host ports, all on `127.0.0.1`: Postgres 5433 (5432 is often taken by a local Postgres), MLflow 5001, Grafana 3000 (user `admin`), Kafka 9092.
 
-Planned, not built yet: Milestone 2 Steps 7–11 (promotion, the Spark detector job, `make detect-check`) and everything after. Don't claim it works until it exists.
+Planned, not built yet: Milestone 2 Steps 8–11 (the Spark detector job, `make detect-check`) and everything after. Don't claim it works until it exists.
 
 **Laptop limit:** 8 GB RAM total. Keep containers memory-capped; Spark runs only under its Compose profile.
 
