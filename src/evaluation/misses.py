@@ -168,12 +168,9 @@ def diagnose(data_dir: Path, name: str, study: Run, v: tune.Validation) -> str:
     with tracking.start_run(report.EXPERIMENT, run_name=f"misses-{name}"):
         mlflow.set_tags(
             {
+                **tracking.validation_tags(v.snapshot, s.fault_schedule),
                 "role": "misses",
                 "study": run_id,
-                "data_snapshot": v.snapshot,
-                "code_version": tracking.code_version(),
-                "fault_schedule_fingerprint": s.fault_schedule,
-                "synthetic_faults": "yes",
             }
         )
         mlflow.log_text(md, "misses.md")

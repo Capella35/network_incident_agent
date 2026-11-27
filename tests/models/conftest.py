@@ -15,7 +15,7 @@ from mlflow.entities import Run
 from common import splits, telemetry
 from evaluation import metrics
 from streaming import baseline, features, offline
-from tests.factories import telemetry_frame
+from tests.factories import flat_baseline, telemetry_frame
 
 OUTAGE = range(
     200, 203
@@ -36,6 +36,7 @@ def normal_rows(
 
 
 DAY = splits.days(splits.Split.VALIDATION)[0]
+REFERENCE = flat_baseline(["CELL-1-1"])  # what `use_validation` says the features used
 TRAIN_INTERVALS = 144 * 21  # three weeks from T0, all training days: 18 samples per hour bucket
 
 
@@ -124,5 +125,7 @@ def use_validation(monkeypatch: pytest.MonkeyPatch, frame: pl.DataFrame) -> None
     monkeypatch.setattr(tune.data_prep, "require_processed_days", lambda _d, _s: {DAY: Path()})
     monkeypatch.setattr(tune.data_prep, "snapshot", lambda _d, _days: "snap")
     monkeypatch.setattr(
-        tune.offline, "features_for", lambda *_a, **_k: offline.OfflineFeatures(frame, (), 1)
+        tune.offline,
+        "features_for",
+        lambda *_a, **_k: offline.OfflineFeatures(frame, (), 1, REFERENCE),
     )

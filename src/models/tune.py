@@ -120,15 +120,16 @@ class Validation:
     days: list[date]  # validation days
     train_days: list[date]
     snapshot: str  # data_prep.snapshot of every processed day used
+    reference: features.Reference  # the one `frame` was computed against
 
 
 def load_validation(data_dir: Path) -> Validation:
     """The validation-week features every trial (and `score_study`) is scored on."""
     train_days = list(data_prep.require_processed_days(data_dir, splits.Split.TRAIN))
     days = list(data_prep.require_processed_days(data_dir, splits.Split.VALIDATION))
-    frame = offline.features_for(data_dir, days, inject=True).frame
+    out = offline.features_for(data_dir, days, inject=True)
     snapshot = data_prep.snapshot(data_dir, [*train_days, *days])
-    return Validation(frame, report.gaps(frame), days, train_days, snapshot)
+    return Validation(out.frame, report.gaps(out.frame), days, train_days, snapshot, out.reference)
 
 
 def load_study_data(data_dir: Path, name: str) -> StudyData:
@@ -217,12 +218,9 @@ def run_study(data_dir: Path, name: str) -> Best | None:
     model is logged."""
     data = load_study_data(data_dir, name)
     tags = {
+        **tracking.validation_tags(data.snapshot),
         "candidate": name,
-        "data_snapshot": data.snapshot,
-        "code_version": tracking.code_version(),
-        "split": str(splits.Split.VALIDATION),
         "days": f"{data.days[0]}..{data.days[-1]} ({len(data.days)})",
-        "synthetic_faults": "yes",
     }
     objective = Objective(name, data, data_dir, tags)
     cfg, dcfg = objective.cfg, objective.dcfg
@@ -287,13 +285,20 @@ class ScoredStudy:
     fault_schedule: str  # fingerprint of the ground truth it was scored against
 
 
+def require_current(study: Run) -> None:
+    """ValueError if `study` was tuned under another `features.yaml` (cheap: no data read)."""
+    if study.data.params.get("features") != features.load_config().model_dump_json():
+        raise ValueError(
+            f"study {study.info.run_id[:8]}: tuned under another features.yaml; `make train`"
+        )
+
+
 def score_study(data_dir: Path, study: Run, v: Validation) -> ScoredStudy:
     """Score the validation weeks with a study's tuned model, as its trials were scored. Raises
     ValueError if the study was tuned under another `features.yaml` or fault schedule (its
     threshold would mean something else): re-run `make train`."""
     run_id = study.info.run_id
-    if study.data.params.get("features") != features.load_config().model_dump_json():
-        raise ValueError(f"study {run_id[:8]}: tuned under another features.yaml; `make train`")
+    require_current(study)
     tuned = tracking.load_tuned(run_id)
     scored = tuned.detector.score(v.frame)
     alarms = detectors.alarms(scored, tuned.threshold, tuned.alarm)

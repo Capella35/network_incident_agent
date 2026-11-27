@@ -13,6 +13,7 @@ from common import process, splits
 from models import candidates, tracking
 from models import detectors as det
 from streaming import offline
+from tests.factories import flat_baseline
 
 CFG = det.load_config()
 VAL_DAY = splits.days(splits.Split.VALIDATION)[0]
@@ -44,7 +45,12 @@ def _fake_run_inputs(
 
     def fake(_d: Path, days: list[date], *, inject: bool = False) -> offline.OfflineFeatures:
         seen.append((days, inject))
-        return offline.OfflineFeatures(day if inject else train, (), n_faults=int(inject))
+        return offline.OfflineFeatures(
+            day if inject else train,
+            (),
+            n_faults=int(inject),
+            reference=flat_baseline(["CELL-1-1"]),
+        )
 
     monkeypatch.setattr(candidates.data_prep, "require_processed_days", lambda *_a: TRAIN_DAYS)
     monkeypatch.setattr(candidates.offline, "features_for", fake)

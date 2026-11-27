@@ -14,6 +14,7 @@ from evaluation import report
 from models import detectors as det
 from models import tune
 from streaming import offline
+from tests.factories import flat_baseline
 from tests.models.conftest import DAY, FakeScore, result_of
 
 
@@ -65,7 +66,9 @@ def test_load_study_data_keeps_only_the_training_sample(
     monkeypatch: pytest.MonkeyPatch, train: pl.DataFrame, normal_with_outage: pl.DataFrame
 ) -> None:
     def fake(_d: Path, days: list[date], *, inject: bool = False) -> offline.OfflineFeatures:
-        return offline.OfflineFeatures(normal_with_outage if inject else train, (), 0)
+        return offline.OfflineFeatures(
+            normal_with_outage if inject else train, (), 0, flat_baseline(["CELL-1-1"])
+        )
 
     monkeypatch.setattr(tune.data_prep, "require_processed_days", lambda _d, s: {DAY: Path()})
     monkeypatch.setattr(tune.data_prep, "snapshot", lambda _d, _days: "snap")
