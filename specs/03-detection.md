@@ -4,7 +4,10 @@ Turns `telemetry.raw` into per-cell **alarms**. Built in Milestone 2 (`milestone
 
 ## Behavior
 - **Spark Structured Streaming job** (`src/streaming/`) reads `telemetry.raw`, computes windowed per-cell features, scores them with the **promoted** detector, and writes alarms to Kafka `alarms` and Postgres. Checkpointing gives exactly-once output.
-- **Features:** rolling means, deviation from the seasonal baseline for that hour of day and weekday (Europe/Rome), rates of change. KPI names, units, and bad directions come from the KPI catalog (`01-domain-model.md` §3), never literals.
+- **Features:** rolling means, deviation from a reference, rates of change. KPI names, units, and bad directions come from the KPI catalog (`01-domain-model.md` §3), never literals. Each detected KPI is judged against what explains its normal swings (Step 6b, `DECISIONS.md` 2026-11-26):
+  - **against the clock**: real traffic KPIs (on a `log1p` scale, with a 7-day level adjustment) and MODELED `load_ratio`: deviation from the seasonal baseline for that cell, hour of day, and weekday (Europe/Rome);
+  - **against the load**: MODELED `latency_ms`, as log latency vs what the training weeks show at the same `load_ratio` (100 equal-count load bins, one curve for all cells since load is capacity-normalized; a real network would need per-cell curves). A busy hour's queueing delay is normal; latency high for its load is not;
+  - **not detected**: MODELED `drop_rate`. It is a function of load only (no injected fault moves it off its curve), so it adds nothing beyond load and false-alarms at busy hours.
 - Data gaps (`data_gap = true`, `02-telemetry.md`) are not faults: the detector must not alarm on a gap alone.
 - **An alarm** is raised on one cell for one interval, with the KPI(s), score, and detector version (`ALM-<uuid>`, `01-domain-model.md` §2). Alarm message fields **(M2)**.
 
@@ -14,7 +17,7 @@ Trained offline on **training weeks** (`common.splits`, Rule 7):
 2. **Isolation Forest** on windowed multi-KPI features.
 3. **Autoencoder**: reconstruction error on windowed features.
 
-Optuna tunes window lengths, thresholds, contamination, latent size, and other hyperparameters on **validation weeks**. Objective: **maximize detection rate and minimize delay, subject to ≤ 1 false incident per day**. Every trial is logged to MLflow; the trial budget and wall-clock timeout are fixed per study (guardrail R4).
+Optuna tunes window lengths, thresholds, contamination, latent size, and other hyperparameters on **validation weeks**. **Union (Step 6c):** the tuned Isolation Forest and autoencoder combined, a cell-interval alarming if either reaches its own threshold (`make union`); their misses are mostly different faults. Objective: **maximize detection rate and minimize delay, subject to ≤ 1 false incident per day**. Every trial is logged to MLflow; the trial budget and wall-clock timeout are fixed per study (guardrail R4).
 
 ## Promotion
 - The winner is registered in MLflow and promoted only through an **evaluation gate**: it must beat the z-score baseline on the validation objective (Definition of done, `00-overview.md`). Gate thresholds beyond that **(M2)**.
@@ -26,4 +29,4 @@ Optuna tunes window lengths, thresholds, contamination, latent size, and other h
 - Tune on test weeks (Rule 7).
 
 ## Known issue to handle
-About 0.22% of real training rows already have `load_ratio` > 0.9 at busy peaks (`BUILD_LOG.md` 2026-11-20). They will look like congestion and count against the false-alarm budget unless the detector or the signature accounts for them.
+About 0.22% of real training rows already have `load_ratio` > 0.9 at busy peaks (`BUILD_LOG.md` 2026-11-20). They will look like congestion and count against the false-alarm budget unless the detector or the signature accounts for them. Step 6b handled it for latency and drop rate (judged against load / not detected); `load_ratio` itself is still judged against the clock, so congestion stays detectable.

@@ -1,5 +1,7 @@
 # Per-cell detection features (milestone 2, step 3; specs/03-detection.md).
-# KPIs come from common/domain/kpis.yaml; every real and modeled KPI gets the same features.
+# KPIs come from common/domain/kpis.yaml; every detected KPI gets the same features.
+# Step 6b (DECISIONS.md 2026-11-26): real KPIs on a log1p scale; MODELED latency
+# judged against load; MODELED drop rate not detected.
 version: 1
 
 windows: [3, 6]        # rolling-mean lengths, in 10-minute intervals (the current one included)
@@ -7,9 +9,20 @@ windows: [3, 6]        # rolling-mean lengths, in 10-minute intervals (the curre
 baseline:              # seasonal mean/std per cell, weekday, and hour (Europe/Rome), training weeks
   std_floor_abs: 1.0e-6     # a near-constant KPI must not turn noise into huge z-scores
   std_floor_rel: 0.05       # std >= this fraction of |mean|
+  std_floor_log: 0.05       # log-scale KPIs: std >= ~5% relative change (a share of a log mean
+                            # would bind on ~94% of internet buckets: measured 2026-11-26)
 
-level:                 # recent-level factor for real KPIs' z (DECISIONS.md 2026-11-24)
+level:                 # recent-level offset for real KPIs' z (log1p scale) (DECISIONS.md 2026-11-24)
   days: 7               # same hour of day over the previous 7 local days
   min_days: 3           # less history than this: plain seasonal z
+
+load_curve:            # MODELED latency judged against load, not against the clock
+  kpi: latency_ms
+  load: load_ratio
+  bins: 100             # equal-count load bins over the training weeks (~5,800 rows each)
+
+not_detected: [drop_rate]  # MODELED drops never leave their load curve (no fault moves them
+                           # directly), so they add nothing beyond load and false-alarm at busy
+                           # hours (Step 6: 339 of the false alarms at the clip)
 
 z_clip: 20.0           # |z| is capped: an outage (traffic 0) is "very bad", not infinitely bad

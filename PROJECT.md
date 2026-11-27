@@ -143,6 +143,8 @@ Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a 
 | 2026-11-23 | **Branch + pull request workflow:** every change reaches `main` through a short-lived branch and a pull request with passing CI; no integration branch. Reason: a direct push bypassed CI and broke `main`. |
 | 2026-11-25 | **Detection delay = Kaplan–Meier median** with missed faults censored, reported with its 95% CI (user's choice); the ≤ 2-interval bar is unchanged. Reason: the median over detected faults only is biased low. |
 | 2026-11-25 | **Optuna tuning (M2 Step 6):** one study per detector, ≤ 1 false incident/day as a hard constraint, threshold tuned as a share of alarming validation intervals and stored inside the logged model; feature settings not tuned. Finding: with today's features no detector is both quiet and sensitive, because MODELED drop rate / latency explode at real busy hours, so the KPI-skew feature fix comes next, before promotion. |
+| 2026-11-26 | **KPI deviation features (M2 Step 6b):** real traffic KPIs on `log1p` against the clock; MODELED latency judged against load (training-week load curve; user's proposal); MODELED drop rate not detected (a function of load only). Measured: Isolation Forest 6 → 32 and autoencoder 14 → 32 of 57 faults within ≤ 1 false incident/day; z-score still infeasible. Details: `DECISIONS.md`. |
+| 2026-11-26 | **Union of Isolation Forest + autoencoder alarms (M2 Step 6c):** chosen from a miss diagnosis (misses long and large, the two detectors' misses mostly different); 38/57 at 0.86 false incidents/day, KM median 6 (from 32/57, KM 9–10). Short of the 90% / ≤ 2 bars. Details: `DECISIONS.md`. |
 
 ## Still open
 
@@ -154,6 +156,5 @@ Moved to `specs/00-overview.md` → Definition of done (2026-11-22). Changing a 
 - **Concurrent investigations (M5):** one agent run per incident, severity queue, shared global budget; possible `related_open_incidents` tool.
 - **Class imbalance in the incident classifier (M4):** per-class metrics and macro-F1, class weights, more training-split faults; validation/test keep their natural mix; watch `no_fault`.
 - **Detection delay with censoring (M2 Steps 5–6):** Kaplan–Meier time-to-detection (missed and window-cut faults censored); Step 6 optimises the KM median.
-- **Skewed KPI deviations (M2 Step 6):** `log1p` for real KPIs, empirical tail z for modeled KPIs; not per-bucket median/MAD (too few samples).
 - **Severity from load (M4):** latency and drop rate saturate under overload; use `load_ratio`.
 - **MCP wrapper for agent tools:** decide after Milestone 5's quality bar is met.

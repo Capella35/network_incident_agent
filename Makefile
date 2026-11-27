@@ -1,4 +1,4 @@
-.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate train inject clean \
+.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate train union diagnose inject clean \
 	env-check up down ps logs spark-smoke db-migrate db-topology replay sink replay-check dashboards \
 	test-integration
 
@@ -66,6 +66,12 @@ train: env-check  ## Optuna study per detector candidate (own process: memory bu
 
 evaluate: env-check  ## Validation report: z-score baseline at a threshold vs the ground truth, logged to MLflow (ARGS="--threshold 4 [--start … --end …]")
 	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m evaluation.report $(ARGS)
+
+union: env-check  ## Union of the latest tuned detectors (each at its own threshold) vs each alone, on validation weeks (MLflow)
+	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m models.ensemble $(ARGS)
+
+diagnose: env-check  ## Why faults are missed: per-fault diagnosis of the latest tuned detectors on validation weeks (MLflow)
+	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m evaluation.misses $(ARGS)
 
 inject:  ## Write a split's SYNTHETIC fault schedule (ground truth, for evaluation) (ARGS="--split validation")
 	uv run python -m producer.injector $(ARGS)

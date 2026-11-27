@@ -70,8 +70,9 @@ def telemetry_frame(
     )
 
 
-def flat_baseline(cells: Iterable[str], mean: float = 1.0, std: float = 0.5) -> pl.DataFrame:
-    """Every (weekday, hour) bucket for `cells`, each KPI with the same mean and std."""
+def flat_baseline(cells: Iterable[str], mean: float = 1.0, std: float = 0.5) -> features.Reference:
+    """Every (weekday, hour) bucket for `cells`, each KPI judged against the clock with the
+    same mean and std (on its detection scale); a one-bin load curve with that mean and std."""
     buckets = [(c, wd, h) for c in cells for wd in range(1, 8) for h in range(24)]
     frame = pl.DataFrame(
         buckets,
@@ -79,8 +80,10 @@ def flat_baseline(cells: Iterable[str], mean: float = 1.0, std: float = 0.5) -> 
         orient="row",
         schema_overrides={"weekday": pl.Int8, "hour": pl.Int8},
     )
-    kpis = features.feature_kpis()
-    return frame.with_columns(
+    kpis = features.clock_kpis(features.load_config())
+    seasonal = frame.with_columns(
         *[pl.lit(mean).alias(f"{k.name}_mean") for k in kpis],
         *[pl.lit(std).alias(f"{k.name}_std") for k in kpis],
     )
+    curve = pl.DataFrame({"upper": [float("inf")], "mean": [mean], "std": [std]})
+    return features.Reference(seasonal, curve)

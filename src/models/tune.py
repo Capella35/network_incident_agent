@@ -113,28 +113,38 @@ class StudyData:
     snapshot: str  # data_prep.snapshot of every processed day used
 
 
+@dataclass(frozen=True)
+class Validation:
+    frame: pl.DataFrame  # features, validation weeks, SYNTHETIC faults injected
+    gaps: pl.DataFrame  # report.gaps(frame)
+    days: list[date]  # validation days
+    train_days: list[date]
+    snapshot: str  # data_prep.snapshot of every processed day used
+
+
+def load_validation(data_dir: Path) -> Validation:
+    """The validation-week features every trial (and `score_study`) is scored on."""
+    train_days = list(data_prep.require_processed_days(data_dir, splits.Split.TRAIN))
+    days = list(data_prep.require_processed_days(data_dir, splits.Split.VALIDATION))
+    frame = offline.features_for(data_dir, days, inject=True).frame
+    snapshot = data_prep.snapshot(data_dir, [*train_days, *days])
+    return Validation(frame, report.gaps(frame), days, train_days, snapshot)
+
+
 def load_study_data(data_dir: Path, name: str) -> StudyData:
     """Features once per study. Only the candidate's training sample is kept (the same rows every
     fit would sample); the z-score, which fits nothing, gets no training rows."""
     dcfg = detectors.load_config()
-    train_days = list(data_prep.require_processed_days(data_dir, splits.Split.TRAIN))
-    days = list(data_prep.require_processed_days(data_dir, splits.Split.VALIDATION))
-    validation = offline.features_for(data_dir, days, inject=True).frame
+    v = load_validation(data_dir)
     max_rows: int | None = getattr(getattr(dcfg.candidates, name), _FIXED_PER_STUDY, None)
     train = (
-        validation.head(0)
+        v.frame.head(0)
         if max_rows is None
         else detectors.training_rows(
-            offline.features_for(data_dir, train_days).frame, max_rows, dcfg.seed
+            offline.features_for(data_dir, v.train_days).frame, max_rows, dcfg.seed
         )
     )
-    return StudyData(
-        train=train,
-        validation=validation,
-        gaps=report.gaps(validation),
-        days=days,
-        snapshot=data_prep.snapshot(data_dir, [*train_days, *days]),
-    )
+    return StudyData(train, v.frame, v.gaps, v.days, v.snapshot)
 
 
 @dataclass(frozen=True)
@@ -261,6 +271,36 @@ def latest_studies() -> dict[str, Run]:
     for run in runs:
         latest.setdefault(run.data.tags["candidate"], run)
     return latest
+
+
+def feasible_studies() -> dict[str, Run]:
+    """`latest_studies()` that logged a model (met the false-incident budget)."""
+    return {n: r for n, r in latest_studies().items() if r.data.tags.get("feasible") == "yes"}
+
+
+@dataclass(frozen=True)
+class ScoredStudy:
+    tuned: tracking.Tuned
+    scored: pl.DataFrame  # `Detector.score` of the validation features
+    alarms: pl.DataFrame  # `detectors.alarms` at the tuned threshold
+    result: metrics.Result
+    fault_schedule: str  # fingerprint of the ground truth it was scored against
+
+
+def score_study(data_dir: Path, study: Run, v: Validation) -> ScoredStudy:
+    """Score the validation weeks with a study's tuned model, as its trials were scored. Raises
+    ValueError if the study was tuned under another `features.yaml` or fault schedule (its
+    threshold would mean something else): re-run `make train`."""
+    run_id = study.info.run_id
+    if study.data.params.get("features") != features.load_config().model_dump_json():
+        raise ValueError(f"study {run_id[:8]}: tuned under another features.yaml; `make train`")
+    tuned = tracking.load_tuned(run_id)
+    scored = tuned.detector.score(v.frame)
+    alarms = detectors.alarms(scored, tuned.threshold, tuned.alarm)
+    result, fingerprint = report.score(data_dir, alarms, days=v.days, gaps=v.gaps)
+    if study.data.tags.get("fault_schedule_fingerprint") != fingerprint:
+        raise ValueError(f"study {run_id[:8]}: tuned on another fault schedule; `make train`")
+    return ScoredStudy(tuned, scored, alarms, result, fingerprint)
 
 
 def _cell(m: dict[str, float], key: str, fmt: str = "{:.0f}") -> str:
