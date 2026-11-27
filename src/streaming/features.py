@@ -13,9 +13,11 @@ detected KPI (the catalog's real and MODELED KPIs minus `not_detected`), per cel
     2026-11-24, option b): the mean deviation over the same hour of the previous `level.days`
     local days. On the log scale that shift is a multiplicative level. A lasting level shift
     (real Milan internet, December 2013) becomes normal after about a week; a fault lasting
-    hours barely moves it. With fewer than `level.min_days` days of history, no shift. Not for
-    MODELED KPIs: they follow load nonlinearly, so a level misfits them (measured: more false
-    highs);
+    hours barely moves it. With fewer than `level.min_days` days of history, no shift. MODELED
+    KPIs listed in `level.modeled` (MODELED load, Step 6d) are judged the same way, `log1p`
+    included (load is mostly below 1, so there the level is additive and the log std floor is
+    about 0.05 of capacity, on purpose: DECISIONS.md 2026-11-27); the other MODELED KPIs follow
+    load nonlinearly, so a level misfits them (measured: more false highs);
   - judged against the load (`load_curve.kpi`, MODELED latency): deviation of log(latency)
     from what the training weeks show at the same `load_curve.load` (equal-count load bins,
     one curve for all cells because load is already per-cell capacity-normalized). A busy
@@ -66,6 +68,7 @@ class LoadCurveParams(FrozenModel):
 class LevelParams(FrozenModel):
     days: PositiveInt  # trailing local days for the level offset (the current day excluded)
     min_days: PositiveInt  # fewer days of history: no level-adjusted features
+    modeled: tuple[str, ...] = ()  # MODELED KPIs judged like real ones (log1p + level offset)
 
     @model_validator(mode="after")
     def _min_le_days(self) -> LevelParams:
@@ -100,6 +103,13 @@ class Config(FrozenModel):
             raise ValueError(f"load_curve.load {curve.load!r}: a measured KPI other than kpi")
         if curve.kpi in self.not_detected:
             raise ValueError(f"load_curve.kpi {curve.kpi!r} must be detected")
+        if unknown := set(self.level.modeled) - set(domain.kpis):
+            raise ValueError(f"level.modeled: unknown KPIs {sorted(unknown)}")
+        for name in self.level.modeled:
+            if domain.kpi(name).source is not KpiSource.MODELED:
+                raise ValueError(f"level.modeled {name!r} must be a MODELED KPI")
+            if name == curve.kpi or name in self.not_detected:
+                raise ValueError(f"level.modeled {name!r}: must be detected against the clock")
         return self
 
 
@@ -136,26 +146,31 @@ def clock_kpis(cfg: Config) -> list[Kpi]:
     return [k for k in feature_kpis(cfg) if k.name != cfg.load_curve.kpi]
 
 
+def _levelled(kpi: Kpi, cfg: Config) -> bool:
+    return kpi.source is KpiSource.REAL or kpi.name in cfg.level.modeled
+
+
 def level_kpis(cfg: Config) -> list[Kpi]:
-    """KPIs whose z is level-adjusted: real activity counts, which scale with level. On their
-    log1p scale the additive level offset is a multiplicative level."""
-    return [k for k in feature_kpis(cfg) if k.source is KpiSource.REAL]
+    """KPIs whose z is level-adjusted: real activity counts, which scale with level, and
+    `level.modeled`. On log1p, the additive level offset is a multiplicative level for counts
+    well above 1; for MODELED load (mostly below 1, where log1p is near linear) it is additive."""
+    return [k for k in feature_kpis(cfg) if _levelled(k, cfg)]
 
 
 def _log_scale(kpi: Kpi, cfg: Config) -> bool:
     """Whether a KPI is detected on a log scale (the one rule `detection_value` and
     `std_floor` share)."""
-    return kpi.source is KpiSource.REAL or kpi.name == cfg.load_curve.kpi
+    return _levelled(kpi, cfg) or kpi.name == cfg.load_curve.kpi
 
 
 def detection_value(kpi: Kpi, cfg: Config) -> pl.Expr:
-    """The KPI's column on its detection scale: real KPIs `log1p` (right-skewed counts; zero
-    traffic stays finite), the load-curve KPI `log` (MODELED latency is always > 0), the rest
-    unchanged."""
+    """The KPI's column on its detection scale: level-adjusted KPIs `log1p` (right-skewed
+    counts and load; zero stays finite), the load-curve KPI `log` (MODELED latency is always
+    > 0), the rest unchanged."""
     col = pl.col(kpi.name)
     if not _log_scale(kpi, cfg):
         return col
-    return col.log1p() if kpi.source is KpiSource.REAL else col.log()
+    return col.log1p() if _levelled(kpi, cfg) else col.log()
 
 
 def std_floor(kpi: Kpi, mean: pl.Expr, cfg: Config) -> pl.Expr:
@@ -213,18 +228,12 @@ def _oriented(kpi: Kpi, z: pl.Expr) -> pl.Expr:
     return z * _ORIENTATION[kpi.bad_direction]
 
 
-def _level_offsets(frame: pl.DataFrame, kpis: list[Kpi], cfg: Config) -> pl.DataFrame:
+def level_offsets(frame: pl.DataFrame, kpis: list[Kpi], cfg: Config) -> pl.DataFrame:
     """Per (cell, local day, hour) and KPI: mean of (value - baseline mean) over the same hour
     of the previous `cfg.level.days` local days (the current day excluded, so it stays causal);
     null with fewer than `cfg.level.min_days` such days. Only rows with traffic (log1p > 0) and
     a baseline count: a cell that stays dead is an outage, never a new level, so it keeps
     alarming."""
-    group = ("cell_id", "hour")
-
-    def trailing_sum(e: pl.Expr) -> pl.Expr:
-        window = f"{cfg.level.days}d"
-        return e.rolling_sum_by("local_date", window_size=window, closed="left").over(group)
-
     hourly = (
         frame.filter(~pl.col("data_gap"))
         .group_by("cell_id", "local_date", "hour")
@@ -242,18 +251,32 @@ def _level_offsets(frame: pl.DataFrame, kpis: list[Kpi], cfg: Config) -> pl.Data
                 )
             ],
         )
-        .sort(*group, "local_date")
+        .sort(*LEVEL_GROUP, "local_date")
     )
+
+    def past(col: str) -> pl.Expr:
+        return trailing_days(pl.col(col), cfg)
+
     offsets = [
-        pl.when(trailing_sum(pl.col(f"{k.name}_days")) >= cfg.level.min_days)
-        .then(trailing_sum(pl.col(f"{k.name}_sum")) / trailing_sum(pl.col(f"{k.name}_n")))
+        pl.when(past(f"{k.name}_days") >= cfg.level.min_days)
+        .then(past(f"{k.name}_sum") / past(f"{k.name}_n"))
         .alias(f"{k.name}_level")
         for k in kpis
     ]
     return hourly.select("cell_id", "local_date", "hour", *offsets)
 
 
-def _z(value: pl.Expr, mean: pl.Expr, std: pl.Expr, cfg: Config) -> pl.Expr:
+LEVEL_GROUP = ("cell_id", "hour")  # a level is per cell and local hour of day
+
+
+def trailing_days(e: pl.Expr, cfg: Config) -> pl.Expr:
+    """Sum of `e` over the same hour of the previous `cfg.level.days` local days, the current
+    day excluded (causal). On a frame with one row per (cell, `local_date`, `hour`), sorted."""
+    window = f"{cfg.level.days}d"
+    return e.rolling_sum_by("local_date", window_size=window, closed="left").over(LEVEL_GROUP)
+
+
+def z_score(value: pl.Expr, mean: pl.Expr, std: pl.Expr, cfg: Config) -> pl.Expr:
     """(value - mean) / std; null on gap rows and where not finite, clipped."""
     z = (value - mean) / std
     return pl.when(~pl.col("data_gap") & z.is_finite()).then(z).clip(-cfg.z_clip, cfg.z_clip)
@@ -281,10 +304,10 @@ def _z_frame(rows: pl.DataFrame, ref: Reference, cfg: Config) -> pl.DataFrame:
     )
     levelled = level_kpis(cfg)
     frame = frame.join(
-        _level_offsets(frame, levelled, cfg), on=["cell_id", "local_date", "hour"], how="left"
+        level_offsets(frame, levelled, cfg), on=["cell_id", "local_date", "hour"], how="left"
     )
     z = [
-        _z(pl.col(k.name), *_reference(k, ref, cfg, levelled=k in levelled), cfg).alias(
+        z_score(pl.col(k.name), *_reference(k, ref, cfg, levelled=k in levelled), cfg).alias(
             f"{k.name}_z"
         )
         for k in feature_kpis(cfg)

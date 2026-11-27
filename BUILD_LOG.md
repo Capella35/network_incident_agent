@@ -20,6 +20,56 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-27 — Milestone 2, step 6d: congestion — separation check, load judged like real KPIs, ablation
+
+**What was built:**
+- `src/evaluation/separation.py` + `make separation ARGS="--fault-type congestion"`: per fault of the type, each signal's peak on its cells over its match window vs normal busy rows (local 11–15 h, outside every fault's match window), plus fault-free **control windows** (same cells and shape, shifted by whole days). Signals: `load_ratio_z`, `traffic_internet_z` (features) and `load_surprise` (log1p load vs the same local hour of the previous 7 days, computed here; MODELED load). Ground truth stays in `evaluation` (Rule 6); validation days only (Rule 7); writes nothing; memory checked against the detector budget (R1).
+- `streaming.offline` split into `telemetry_with_history` (rows with the 7-day history, injected as before) + `features_of(rows, days, ref)`; `features_for` loads the baseline before any telemetry so a missing or stale one fails fast. `streaming.features.trailing_days` / `LEVEL_GROUP` / `z_score` made public (the level offset and the load surprise share one causal window); `evaluation.report.num` shared with `misses`.
+- Finished the draft left by the interrupted 2026-11-26 session (its `run()` called a nonexistent function).
+
+**Tests run and results:**
+- `make check` (verification): 456 passed, coverage 92.85%.
+- `make separation ARGS="--fault-type congestion"` (6.7 s): 12 congestion faults, 57,822 normal busy rows, 148 control windows.
+
+| signal | fault peak min / median / max | normal p99 / p99.9 / max | faults > normal p99.9 | control peak median | faults above all own controls | separates |
+|---|---|---|---:|---:|---:|---|
+| load_ratio_z | -1.57 / 9.49 / 20.00 | 4.00 / 7.84 / 20.00 | 8 / 12 | 1.73 | 11 / 12 | yes |
+| traffic_internet_z | -0.24 / 7.43 / 20.00 | 4.73 / 8.48 / 12.98 | 5 / 12 | 1.68 | 10 / 12 | no |
+| load_surprise | 0.10 / 5.14 / 20.00 | 1.93 / 3.32 / 11.67 | 8 / 12 | 0.78 | 10 / 12 | yes |
+
+- Reading: the load signal is already in the features (`load_ratio_z` separates). Congestion misses are about how the detectors weigh it, not a missing signal. `load_surprise` has the cleaner normal tail (median / p99.9 = 1.55 vs 1.21; normal max 11.7 vs the 20 cap) but the same 8 / 12 above it. One fault (`validation-20131202-015`) shows no load rise on any signal.
+- Reviewed: `/simplify` (4 reviewers): shared trailing-window / z helpers instead of copies, hourly aggregation as in `_level_offsets`, one windows frame instead of a per-fault loop, a shared number formatter. `/code-review` medium: 8 findings, 7 fixed — peak-vs-row-quantile bias (control windows added; the verdict rule unchanged), memory (raw rows freed, budget checked), counts exclude faults with no data, early baseline failure, `KeyError` caught only for the fault type, missing `DECISIONS.md` row, direct test for `telemetry_with_history`. Not fixed: the hourly aggregation is still close to `_level_offsets` (different statistic: raw value vs deviation from the baseline; sharing it would reshape `_level_offsets` for a one-off check).
+- Altitude reviewer's point, for the user: `load_surprise` (trailing 7-day mean and std) is not the same statistic as the planned change "judge `load_ratio` like real KPIs" (seasonal bucket mean + 7-day level offset, seasonal std). The plan fixed which signals to compare; that candidate was not measured.
+
+**Change (a), the user's choice: judge MODELED load like the real KPIs.**
+- Measured first as a fourth signal in `make separation` (in-memory candidate): `load_ratio_z_levelled` median 5.99 > p99.9 4.43, **10 / 12** above (vs 8 for the old `load_ratio_z`), control median 1.01.
+- Built: `features.yaml` `level.modeled: [load_ratio]`; `features.LevelParams.modeled` (validated: known, MODELED, judged on the clock); `log1p` + level offset for listed KPIs through the real-KPI code path. Load-curve bins now on `log1p` load (same bins: monotone). The in-memory candidate was removed from `separation.py` once the feature computed it; after `make baseline`, `make separation` reproduced its numbers exactly (5.99 / 4.43 / 10 of 12).
+- Reviewed: `/code-review` medium on the separation addition (1 important: all training weeks in memory at once — resolved by removing the in-memory candidate; nits fixed: control-id parsing, docstrings) and on the feature (1 important: the log std floor acts as ~0.05 of capacity on load — kept on purpose, see DECISIONS.md; nits fixed: wording, a test edge on the raw scale, a KPI literal in a test, an unasserted config dependency).
+- `make check`: 460 passed, coverage 92.85%.
+
+**Measured (validation weeks; `make train` → `make union` → `make diagnose`):**
+
+| detector | faults | false/day | KM median [CI] | before (Step 6b/6c) |
+|---|---:|---:|---|---|
+| autoencoder | 41/57 | 0.29 | 1 [0, 9] | 32/57, 0.00, 9 |
+| z-score | 37/57 | 0.86 | 0 [0, 18] | infeasible |
+| Isolation Forest | 23/57 | 0.79 | not reached [10, n/a] | 32/57, 0.93, 10 |
+| union of all three | 43/57 | **1.64** | 0 [0, 5] | 38/57 (2 members), 0.86, 6 |
+
+- Misses by type (autoencoder / z-score / Isolation Forest): congestion 11 / 10 / 11 of 12; cell outage 1 / 1 / 8 of 11; site power 0 / 0 / 5 of 17; backhaul 0 / 1 / 4 of 8; config push 4 / 8 / 6 of 9.
+- Abandon criteria (the user's, set before measuring): congestion gain < 4 → **fails** (0–2); > 1.0 false/day → **fails for the union** (1.64); overall ≥ 38/57 → passes.
+- **Ablation** (asked for by the user, decision rule set before it ran: keep if ≤ 37/57, revert if ≥ 39, the user decides at 38): autoencoder, same seeded tuning, `level.modeled: []` → **32/57, 0.00/day, KM 9 [6, n/a]** (identical to the Step 6b study). → **Feature kept**, recorded as a goalpost change (DECISIONS.md 2026-11-27). Then restored, baseline refitted, autoencoder re-tuned: study 2d41d0aa reproduced 41/57, 0.29/day, KM 1.
+- Night congestion faults (5 of 12, 00:50–05:50) peak at load z 2.9–20 under the new feature; the one fault no signal shows (`-015`) is at Thu 11:00.
+
+**Decisions made:** (also in DECISIONS.md)
+- Separation criterion (fixed 2026-11-26 before measuring) kept; control windows added as evidence, not as a new rule.
+- `level.modeled: [load_ratio]` kept despite failing its congestion goal (ablation rule above); `log1p` std floor on load kept on purpose.
+
+**Open items:**
+- Congestion still missed (≤ 2/12): the detectors score it low despite load z 4.5–8.
+- The union of all three tuned members exceeds 1.0 false/day: membership is a Step 7 decision.
+- Validation numbers are optimistic (thresholds tuned on the same weeks) until the test weeks.
+
 ## 2026-11-26 — Milestone 2, step 6c: miss diagnosis + union of detectors
 
 **What was built:**

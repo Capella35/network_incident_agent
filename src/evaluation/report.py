@@ -37,6 +37,11 @@ def _rate(s: metrics.Summary) -> str:
     return "n/a" if s.detection_rate is None else f"{s.detection_rate:.1%}"
 
 
+def num(v: float | None) -> str:
+    """A report number to 2 decimals, or n/a."""
+    return "n/a" if v is None else f"{v:.2f}"
+
+
 def delay_text(m: metrics.Median) -> str:
     def bound(v: int | None) -> str:
         return "n/a" if v is None else str(v)

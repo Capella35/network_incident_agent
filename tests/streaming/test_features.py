@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from common import telemetry
 from common.domain import load_domain
 from common.domain.loader import BadDirection, KpiSource
+from producer import kpi_model
 from streaming import features as ft
 from tests.factories import flat_baseline, telemetry_frame
 
@@ -81,6 +82,37 @@ def test_too_little_history_falls_back_to_seasonal_z() -> None:
     assert z[3] == pytest.approx((LOW - 1 - offset) / 0.5)
 
 
+def test_modeled_load_in_level_modeled_is_judged_like_a_real_kpi() -> None:
+    load = CFG.load_curve.load
+    assert CFG.level.modeled == (load,)  # the expected values below assume it (Step 6d)
+    frame = _level_shift(days=14, shift_day=5)
+    frame = frame.with_columns(pl.col("internet").alias(load))  # 1.0, then 1/3
+    z = _median_by_local_day(_compute(frame), f"{load}_z")
+    assert z[2] == pytest.approx((HIGH - 1) / 0.5)  # 2 days of history: seasonal z, log1p
+    assert z[5] == pytest.approx((LOW - HIGH) / 0.5)  # the shift; history still at HIGH
+    assert z[12] == pytest.approx(0.0)  # 7 days at the new level: normal again
+    plain = CFG.model_copy(update={"level": CFG.level.model_copy(update={"modeled": ()})})
+    cells = frame["cell_id"].unique().to_list()
+    out = ft.compute(frame, flat_baseline(cells, mean=1.0, std=0.5), plain)
+    assert _median_by_local_day(out, f"{load}_z")[12] == pytest.approx((1 / 3 - 1) / 0.5)
+
+
+@pytest.mark.parametrize(
+    ("modeled", "error"),
+    [
+        (["no_such_kpi"], "unknown"),
+        ([kpi_model.load_params().load_kpi], "MODELED"),  # real KPIs are always levelled
+        ([CFG.load_curve.kpi], "against the clock"),
+    ],
+)
+def test_level_modeled_accepts_only_modeled_kpis_judged_on_the_clock(
+    modeled: list[str], error: str
+) -> None:
+    raw = {**CFG.model_dump(), "level": {**CFG.level.model_dump(), "modeled": modeled}}
+    with pytest.raises(ValidationError, match=error):
+        ft.Config.model_validate(raw)
+
+
 def test_level_config_rejects_min_days_above_days() -> None:
     with pytest.raises(ValidationError):
         ft.LevelParams(days=3, min_days=4)
@@ -118,7 +150,11 @@ def test_latency_is_judged_against_its_load_bin() -> None:
     )
     ref = flat_baseline(["CELL-1-1"])
     curve = pl.DataFrame(
-        {"upper": [0.5, math.inf], "mean": [math.log(20.0), math.log(200.0)], "std": [0.1, 0.1]}
+        {
+            "upper": [math.log1p(0.5), math.inf],  # load is binned on log1p (level.modeled)
+            "mean": [math.log(20.0), math.log(200.0)],
+            "std": [0.1, 0.1],
+        }
     )
     out = ft.compute(frame, ft.Reference(ref.seasonal, curve), CFG)
     busy, quiet = out["latency_ms_z"].to_list()

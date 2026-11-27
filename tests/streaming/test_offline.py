@@ -44,6 +44,25 @@ def test_history_from_an_earlier_split_comes_clean(
     assert out.frame["traffic_internet_z"].null_count() == 0
 
 
+def test_telemetry_with_history_puts_history_rows_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = offline.data_prep.Paths(tmp_path)
+    paths.traffic.mkdir(parents=True)
+    earlier = VAL_DAY - timedelta(days=1)
+    for d in (earlier, VAL_DAY):
+        paths.traffic_day(d).write_bytes(b"stub")
+
+    def fake(_d: Path, days: list[date], *, inject: bool = False) -> replay.Telemetry:
+        return replay.Telemetry(pl.concat([_day_rows(d) for d in days]), [], n_faults=inject)
+
+    monkeypatch.setattr(offline.replay, "telemetry_for", fake)
+    out = offline.telemetry_with_history(tmp_path, [VAL_DAY], inject=True)
+    local = out.rows.select(features.LOCAL_TIME.dt.date()).to_series()
+    assert local.to_list() == [earlier] * 144 + [VAL_DAY] * 144
+    assert out.history_days == (earlier,) and out.n_faults == 1
+
+
 def test_days_must_be_consecutive(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="consecutive"):
         offline.features_for(tmp_path, [VAL_DAY, VAL_DAY + timedelta(days=2)])

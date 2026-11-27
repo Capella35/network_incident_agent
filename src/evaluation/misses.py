@@ -143,15 +143,11 @@ def render(table: pl.DataFrame, result: metrics.Result, *, title: str) -> str:
         "|---|---|---:|---:|---|---:|---:|",
         *[
             f"| {r['fault_id']} | {r['fault_type']} | {r['cells']} | {r['duration']} | "
-            f"{r['worst_kpi']} | {_num(r['worst_bad'])} | {_num(r['peak_ratio'])} |"
+            f"{r['worst_kpi']} | {report.num(r['worst_bad'])} | {report.num(r['peak_ratio'])} |"
             for r in missed.iter_rows(named=True)
         ],
     ]
     return "\n".join(lines) + "\n"
-
-
-def _num(v: float | None) -> str:
-    return "n/a" if v is None else f"{v:.2f}"
 
 
 def diagnose(data_dir: Path, name: str, study: Run, v: tune.Validation) -> str:
