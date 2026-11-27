@@ -12,9 +12,12 @@ baseline:              # seasonal mean/std per cell, weekday, and hour (Europe/R
   std_floor_log: 0.05       # log-scale KPIs: std >= ~5% relative change (a share of a log mean
                             # would bind on ~94% of internet buckets: measured 2026-11-26)
 
-level:                 # recent-level offset for real KPIs' z (log1p scale) (DECISIONS.md 2026-11-24)
+level:                 # recent-level offset for real KPIs' and level.modeled z (log1p scale) (DECISIONS.md 2026-11-24)
   days: 7               # same hour of day over the previous 7 local days
   min_days: 3           # less history than this: plain seasonal z
+  modeled: [load_ratio]  # MODELED load judged like real KPIs too (log1p + level), so a busy
+                         # hour or the December shift is not a surprise; congestion is (Step 6d,
+                         # DECISIONS.md 2026-11-27: 10/12 congestion peaks above normal p99.9)
 
 load_curve:            # MODELED latency judged against load, not against the clock
   kpi: latency_ms

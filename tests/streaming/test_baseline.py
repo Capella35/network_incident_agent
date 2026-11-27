@@ -32,8 +32,10 @@ def test_fit_one_row_per_bucket_with_mean_std_and_floor() -> None:
     internet = [math.log1p(1 + i / 7) for i in range(6)]  # cell 1, hour 1; real: log1p scale
     assert first["traffic_internet_mean"] == pytest.approx(sum(internet) / 6)
     assert first["traffic_internet_std"] == pytest.approx(pl.Series(internet).std())
-    # load_ratio is constant (std 0): floored at std_floor_rel x |mean|
-    assert first["load_ratio_std"] == pytest.approx(0.3 * CFG.baseline.std_floor_rel)
+    # load_ratio is levelled (level.modeled): log1p scale; constant (std 0): the log floor
+    assert CFG.level.modeled == (CFG.load_curve.load,)  # the values below assume it
+    assert first["load_ratio_mean"] == pytest.approx(math.log1p(0.3))
+    assert first["load_ratio_std"] == pytest.approx(CFG.baseline.std_floor_log)
     # not judged against the clock: no seasonal columns
     assert not {"latency_ms_mean", "drop_rate_mean"} & set(base.columns)
 
@@ -58,7 +60,9 @@ def test_load_curve_bins_by_load_quantiles_on_log_latency() -> None:
     loads = [0.1, 0.2, 0.3, 0.7, 0.8, 0.9]
     latencies = [20.0, 20.0, 20.0, 100.0, 100.0, 400.0]
     curve = baseline.fit(_curve_rows(loads, latencies), cfg).load_curve
-    assert curve["upper"].to_list() == pytest.approx([0.5, math.inf])  # the median splits
+    # the median splits, on the load's detection scale (log1p: it is in level.modeled)
+    median = (math.log1p(0.3) + math.log1p(0.7)) / 2
+    assert curve["upper"].to_list() == pytest.approx([median, math.inf])
     low, high = [math.log(x) for x in latencies[:3]], [math.log(x) for x in latencies[3:]]
     assert curve["mean"].to_list() == pytest.approx([statistics.mean(low), statistics.mean(high)])
     # constant latency in the low bin: std floored at std_floor_log
