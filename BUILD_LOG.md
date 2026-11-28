@@ -20,6 +20,42 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-28 — Milestone 2, step 9 close-out: the check scores the job's pinned version
+
+**What was built:**
+- `make detect-check` now scores offline with the detector version the job pinned to its checkpoint (`<checkpoint>.detector`, read by `streaming.job.pinned_version`; `job.version_marker` / `STATE_LAYOUT` shared with `pin_version`), loaded by `models.tracking.load_version` (any registered version, through the local copy; `load_champion` now uses it). It used to load the current champion, so after a promotion without a job restart every alarm would differ with no stated cause. If no version is pinned, or the pinned one cannot be loaded, it refuses: "job runs detector/N, champion is detector/M: <error>". If they differ but the pinned one loads, it logs a warning and checks the job's version. `common.alarms.registered_version` is `detector_version`'s inverse.
+- Found by the read-only ReAct/routing audit (2026-11-28; listed earlier by the champion-copy `/code-review`).
+
+**Tests run and results:**
+- `make check`: 542 passed + 1 skipped, 91.40%. New tests: the check scores with the pinned version while the champion has moved on; a pinned version that cannot be loaded is refused naming both; no pinned version is refused; the marker reads back as the detector version.
+- **Step 9 result, on final code:** image rebuilt; `make detect-reset` (19:35 UTC); `make detect`: the job re-scored the whole topic from the start, ~1.26M rows in ~18 min (94 batches to drained), 0 restarts, 0 OOM kills, 2,183 hits of its 1.5 GiB limit. `make detect-check ARGS="--day 2013-12-03"` (run `detect-check-2013-12-03-5926384e`, 165,888 rows replayed incl. 6 clean + 1 injected history days): **MATCH: streamed 757 = offline 757, same IDs, bitwise-identical scores and KPIs, identical validation report** (validation, SYNTHETIC faults: 5 faults, 3 detected, KM median 3 [1, n/a], 7 incidents, 1 false; `detection_reports` parity true). **Check container peak 461.5 MiB of 1 GiB** (cgroup `memory.peak`, read every second; `memory.events` max 0, oom_kill 0). Step 9 measured 390 MiB on the earlier run.
+- `make test-integration` not re-run in this pass.
+
+**Decisions made:**
+- `DECISIONS.md` Step 9 row: (6) a lost message delays its cell's later rows until the state times out (60 min), accepted; (7) the check scores with the job's pinned version.
+
+**Open items:**
+- `make detect-reset` re-scores the whole topic and the topic grows with each check run (~18 min now).
+- Detector memory at its limit during a re-score (R1 re-check at Step 11).
+
+## 2026-11-28 — Milestone 2 (between steps 10 and 11): local champion copy
+
+**What was built:**
+- `models.tracking.local_copy` + `load_champion(client, *, cache=...)`: the champion package is loaded from a local copy keyed by `<version>-<run_id>` (the run ID because a version number can return after a delete). Download into a `.download-*` folder beside the target, then rename into place (an interrupted download leaves no copy that looks complete); if another process placed the copy first, that one is kept. The job and `make detect-check` share Compose volume `model-cache` (`/models-cache`, created in the image so it gets the app user as owner). `make clean` removes it with the checkpoint when the detector is stopped (R3).
+- Job start-up: a copy or download failure (`OSError`, `MlflowException`) is now a one-line error, exit 1 (it was a traceback); `detect-check` catches `OSError` too.
+
+**Tests run and results:**
+- `make check`: 539 passed + 1 skipped, 91.30% coverage. New tests: one download per version, a failed download leaves nothing, a copy another process finished first is kept, start-up errors exit 1.
+- Stack: first start with an empty volume 71 s from container start to champion loaded (41 files, 2.4 MB); restarts from the copy 34 s and 17 s, no download. The first start of a freshly built image took 121 s with no download (the stack was still busy from `make detect`), so treat start times as noisy. The remaining time before scoring is imports + registry lookup (not measured separately).
+- Reviewed: `/simplify` (4 reviewers: required `cache`, unused `--model-cache` flags dropped, tests simplified) + `/code-review` medium. Its findings 1, 2 + a nit were about the in-code cleanup of old copies that `/simplify` had suggested (it races across the shared volume, and a half-deleted copy would be trusted): reverted to `make clean`. Findings 3 + 4 (start-up errors) fixed. Findings 5–7 are in Step 9/10 code: recorded as open items.
+
+**Decisions made:**
+- Old copies are not pruned in code (shared volume); the cache grows 2.4 MB per promoted version until `make clean`.
+
+**Open items:**
+- From `/code-review`, pre-existing code: `scoring._lost_before` compares `len(seen) == partitions` with the count read at start (a topic that gains partitions, or reads 0, gives up holes only at the state timeout: use `>=` and refuse 0); the sink's final commit at shutdown is tried once and its `KafkaException` is uncaught in `main`; `detect-check` loads the current champion, not the version the job pinned (`<checkpoint>.detector`), so after a promotion without a restart it reports a mismatch with no cause.
+- Feature recompute per batch (8 days per cell): measure batch times before caching anything (the parity bar is exact).
+
 ## 2026-11-28 — Milestone 2, step 10: detector health, detection dashboards, `make clean`
 
 **What was built:**

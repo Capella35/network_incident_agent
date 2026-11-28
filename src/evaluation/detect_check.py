@@ -34,19 +34,22 @@ import uuid
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 import psycopg
 from confluent_kafka import KafkaException
 from psycopg import sql
 
-from common import kafka, splits, telemetry
+from common import alarms, kafka, splits, telemetry
 from common.db import DbConfigError, DbSettings, Role, insert_into
 from evaluation import metrics, report
 from models import cli
 from producer import milan, replay
 from streaming import job, offline, scoring
+
+if TYPE_CHECKING:
+    from mlflow import MlflowClient
 
 log = logging.getLogger("evaluation.detect_check")
 
@@ -255,10 +258,32 @@ def run_check(
     )
 
 
-def main(argv: list[str] | None = None) -> int:
-    from mlflow import MlflowClient
+def job_scorer(client: MlflowClient, checkpoint: Path, cache: Path) -> scoring.Scorer:
+    """The scorer of the detector version the job pinned to `checkpoint`, not the champion's:
+    after a promotion without a job restart they differ, and checking the job against the
+    champion would report every alarm as a difference. Raises CheckError if no version is
+    pinned or the pinned one cannot be loaded (naming both versions)."""
+    from mlflow.exceptions import MlflowException
 
     from models import tracking
+
+    pinned = job.pinned_version(checkpoint)
+    if pinned is None:
+        raise CheckError(f"no detector version pinned to {checkpoint}: start the job (make detect)")
+    model, version = alarms.registered_version(pinned)
+    current = tracking.champion(client)
+    champion = "none" if current is None else alarms.detector_version(model, current.version)
+    try:
+        loaded = tracking.load_version(client, version, cache=cache)
+    except (MlflowException, OSError, ValueError) as exc:
+        raise CheckError(f"job runs {pinned}, champion is {champion}: {exc}") from exc
+    if pinned != champion:
+        log.warning("job runs %s, champion is %s: checking the job's version", pinned, champion)
+    return scoring.Scorer.of(loaded, model)
+
+
+def main(argv: list[str] | None = None) -> int:
+    from mlflow import MlflowClient
 
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     ap.add_argument("--day", type=date.fromisoformat, required=True)
@@ -268,9 +293,16 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     try:
-        scorer = scoring.Scorer.of(tracking.load_champion(MlflowClient()), tracking.MODEL)
+        scorer = job_scorer(MlflowClient(), args.checkpoint, Path(job.DEFAULT_MODEL_CACHE))
         r = run_check(args.data_dir, args.checkpoint, args.day, scorer, timeout_s=args.timeout)
-    except (CheckError, DbConfigError, psycopg.Error, KafkaException, *cli.RUN_ERRORS) as exc:
+    except (
+        CheckError,
+        DbConfigError,
+        psycopg.Error,
+        KafkaException,
+        OSError,
+        *cli.RUN_ERRORS,
+    ) as exc:
         log.error("%s", exc)
         return 1
     print(render(r), flush=True)  # the verdict first: a failed store must not hide it

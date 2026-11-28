@@ -182,6 +182,56 @@ def test_promote_refuses_a_stale_or_missing_study(promote_with: Promote) -> None
         promote.promote(Path(), "autoencoder")
 
 
+def test_load_champion_downloads_each_version_once(
+    promote_with: Promote, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    promote_with(1e9)
+    cache = tmp_path / "cache"
+    first = tracking.load_champion(MlflowClient(), cache=cache)
+    (copy,) = cache.iterdir()  # one copy, no download folder left behind
+    assert (copy / "MLmodel").exists()
+
+    def no_download(**_kw: object) -> str:
+        raise AssertionError("downloaded again")
+
+    monkeypatch.setattr(mlflow.artifacts, "download_artifacts", no_download)
+    again = tracking.load_champion(MlflowClient(), cache=cache)
+    assert again.version == first.version
+    assert again.package.tuned.threshold == first.package.tuned.threshold
+
+
+def test_local_copy_leaves_nothing_when_the_download_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def broken(*, dst_path: str, **_kw: object) -> str:
+        Path(dst_path).mkdir(parents=True)
+        (Path(dst_path) / "MLmodel").write_text("half")
+        raise OSError("connection reset")
+
+    monkeypatch.setattr(mlflow.artifacts, "download_artifacts", broken)
+    with pytest.raises(OSError, match="connection reset"):
+        tracking.local_copy("models:/detector/1", tmp_path / "1-run")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_local_copy_keeps_a_copy_another_process_finished_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "1-run"
+
+    def racing(*, dst_path: str, **_kw: object) -> str:
+        target.mkdir()
+        (target / "MLmodel").write_text("theirs")
+        Path(dst_path).mkdir()
+        (Path(dst_path) / "MLmodel").write_text("ours")
+        return dst_path
+
+    monkeypatch.setattr(mlflow.artifacts, "download_artifacts", racing)
+    assert tracking.local_copy("models:/detector/1", target) == target
+    assert (target / "MLmodel").read_text() == "theirs"
+    assert [p.name for p in tmp_path.iterdir()] == [target.name]
+
+
 def test_load_package_refuses_a_tuning_model_without_features(local_mlflow: None) -> None:
     run = logged_study(5.0)
     with pytest.raises(ValueError, match="no feature spec"):

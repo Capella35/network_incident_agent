@@ -46,8 +46,10 @@ ADD --checksum=sha256:f77a5060d6936a9144023584232f9de3f2248f1abfe156e9d31795f187
     ${MAVEN}/org/apache/commons/commons-pool2/2.13.1/commons-pool2-2.13.1.jar ${JARS}/
 RUN chmod 644 ${JARS}/*.jar
 
-# Non-root; the checkpoint directory exists in the image so a new named volume takes its owner.
-RUN useradd --uid 1000 --create-home app && mkdir /checkpoints && chown app /checkpoints
+# Non-root; the checkpoint and model-cache directories exist in the image so a new named volume
+# takes their owner.
+RUN useradd --uid 1000 --create-home app && mkdir /checkpoints /models-cache \
+    && chown app /checkpoints /models-cache
 USER app
 WORKDIR /home/app
 ENTRYPOINT ["python", "-m", "streaming.job"]

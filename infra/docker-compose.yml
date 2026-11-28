@@ -248,6 +248,9 @@ services:
       - "127.0.0.1:4040:4040"  # Spark UI
     volumes:
       - spark-checkpoints:/checkpoints
+      # Local copies of champion versions (models.tracking.local_copy): a restart loads the
+      # champion from here instead of downloading it from MLflow again.
+      - model-cache:/models-cache
     deploy:
       resources:
         limits: { memory: 1536m }
@@ -289,12 +292,14 @@ services:
     volumes:
       - ../data:/home/app/data:ro
       - spark-checkpoints:/checkpoints:ro
+      - model-cache:/models-cache  # the job's champion copies (writes one if missing)
     deploy:
       resources:
         limits: { memory: 1g }
 
 volumes:
   spark-checkpoints:
+  model-cache:
   kafka-data:
   postgres-data:
   mlflow-data:

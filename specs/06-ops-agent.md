@@ -8,12 +8,14 @@ Lets an ops engineer investigate an incident by asking questions; answers cite e
 - **Tools are read-only and parameterized** (Rule 13): fixed queries, validated parameters (IDs, time ranges with a max span). The model never writes SQL.
 - **Free text is data, not instructions:** incident report text is passed delimited; an injected instruction must not be followed (guardrail A3).
 - **Only aggregated, synthetic, or modeled data goes to the LLM** (Rule 11). Never secrets, env values, file paths, or raw config.
-- **Provider interface:** Groq by default (`LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`), swappable. Off by default; hard per-run call/token caps, max tool calls per question, rate limiter, every call logged (guardrails C1–C6).
+- **Tool failures are observations (decided 2026-11-28).** When a tool call fails or its parameters are rejected, the error goes back to the agent as a structured error observation (tool name, the rejected or failed parameters, the reason), counts against the C4 tool-call cap, and is logged in the run trace (C6). A tool failure never crashes the run and is never silently dropped. The M5 test plan includes one test with a deliberately failing tool.
+- **Ending at the cap (decided 2026-11-28).** When the C4 cap is reached with no conclusion, the agent returns the structured answer of §5 with `fault_type: unknown`, marked **unverified**, citing the checks it did complete. It never stops without an answer and never continues past the cap.
+- **Provider interface:** Groq by default (`LLM_PROVIDER`, `LLM_MODEL`, `LLM_API_KEY`), swappable. Off by default; hard per-run call/token caps, max tool calls per question, rate limiter, every step traced (guardrails C1–C6). **No fallback provider** (`DECISIONS.md` 2026-11-28): after C5's retries the run fails visibly and the incident shows "no draft yet". Tool calls use the provider's native function calling (to be confirmed by the agent eval set).
 - **Code layout (M5):** instructions (system prompt + ontology card generator) and tools kept apart inside `src/agent/`, so each tool has its own test and the prompt has no hand-copied facts.
 
 
 ## 2. Ontology card in the system prompt
-A compact, auto-generated summary of `entities.yaml`, `kpis.yaml`, and `faults.yaml` (entity types, relations, KPI meanings, fault signatures). It is generated from the YAML, never hand-copied, so it can't drift. It's small enough to cache.
+A compact, auto-generated summary of `entities.yaml`, `kpis.yaml`, and `faults.yaml` (entity types, relations, KPI meanings, fault signatures). It is generated from the YAML, never hand-copied, so it can't drift. It's small enough to cache, if the provider caches prompts for the chosen model: **open** (`DECISIONS.md`, Open), so the design must not depend on it.
 
 ## 3. Typed tools
 | Tool | Returns |
