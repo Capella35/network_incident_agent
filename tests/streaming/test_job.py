@@ -176,12 +176,15 @@ def test_alarms_kafka_did_not_take_stop_the_batch_before_postgres(
 
 
 def test_a_checkpoint_stays_with_the_detector_version_that_scored_it(tmp_path: Path) -> None:
-    marker = tmp_path / "detector.detector"
-    job.pin_version(marker, "detector/1")
-    job.pin_version(marker, "detector/1")  # a restart of the same version
+    checkpoint = tmp_path / "detector"
+    assert job.pinned_version(checkpoint) is None
+    marker = job.version_marker(checkpoint)
+    v1, v2 = (f"detector/{n} {job.STATE_LAYOUT}" for n in (1, 2))
+    job.pin_version(marker, v1)
+    job.pin_version(marker, v1)  # a restart of the same version
     with pytest.raises(ValueError, match="make detect-reset"):
-        job.pin_version(marker, "detector/2")
-    assert marker.read_text() == "detector/1"
+        job.pin_version(marker, v2)
+    assert job.pinned_version(checkpoint) == "detector/1"
 
 
 def table_columns(name: str) -> list[str]:

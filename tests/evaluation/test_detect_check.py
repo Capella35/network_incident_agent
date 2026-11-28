@@ -107,3 +107,51 @@ def test_a_history_with_an_unprocessed_day_is_refused() -> None:
     history = [day - timedelta(days=i) for i in (7, 6, 5, 3, 2, 1)]  # day - 4 not processed
     with pytest.raises(dc.CheckError, match="unprocessed day"):
         dc.plan(day, history)
+
+
+class _Version:
+    def __init__(self, version: str) -> None:
+        self.version = version
+
+
+@pytest.fixture
+def pinned_job(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A job checkpoint pinned to detector/1 while the champion has moved on to detector/2;
+    `tracking.load_version` records what it was asked to load."""
+    from models import tracking
+
+    checkpoint = tmp_path / "detector"
+    dc.job.pin_version(dc.job.version_marker(checkpoint), f"detector/1 {dc.job.STATE_LAYOUT}")
+    monkeypatch.setattr(tracking, "champion", lambda _client: _Version("2"))
+    monkeypatch.setattr(tracking, "load_version", lambda _c, v, *, cache: f"package {v}")
+    monkeypatch.setattr(dc.scoring.Scorer, "of", lambda loaded, model: (loaded, model))
+    return checkpoint
+
+
+def test_the_check_scores_with_the_version_the_job_pinned(
+    pinned_job: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    assert dc.job_scorer(None, pinned_job, Path()) == ("package 1", "detector")  # type: ignore[arg-type,comparison-overlap]
+    assert "job runs detector/1, champion is detector/2" in caplog.text
+
+
+def test_a_pinned_version_that_cannot_be_loaded_is_refused_naming_both(
+    pinned_job: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from mlflow.exceptions import MlflowException
+
+    from models import tracking
+
+    def gone(*_a: object, **_kw: object) -> None:
+        raise MlflowException("version 1 not found")
+
+    monkeypatch.setattr(tracking, "load_version", gone)
+    with pytest.raises(
+        dc.CheckError, match=r"job runs detector/1, champion is detector/2: .*not found"
+    ):
+        dc.job_scorer(None, pinned_job, Path())  # type: ignore[arg-type]
+
+
+def test_a_checkpoint_with_no_pinned_version_is_refused(tmp_path: Path) -> None:
+    with pytest.raises(dc.CheckError, match="no detector version pinned"):
+        dc.job_scorer(None, tmp_path / "detector", Path())  # type: ignore[arg-type]

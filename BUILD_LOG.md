@@ -20,6 +20,24 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-28 — Milestone 2, step 9 close-out: the check scores the job's pinned version
+
+**What was built:**
+- `make detect-check` now scores offline with the detector version the job pinned to its checkpoint (`<checkpoint>.detector`, read by `streaming.job.pinned_version`; `job.version_marker` / `STATE_LAYOUT` shared with `pin_version`), loaded by `models.tracking.load_version` (any registered version, through the local copy; `load_champion` now uses it). It used to load the current champion, so after a promotion without a job restart every alarm would differ with no stated cause. If no version is pinned, or the pinned one cannot be loaded, it refuses: "job runs detector/N, champion is detector/M: <error>". If they differ but the pinned one loads, it logs a warning and checks the job's version. `common.alarms.registered_version` is `detector_version`'s inverse.
+- Found by the read-only ReAct/routing audit (2026-11-28; listed earlier by the champion-copy `/code-review`).
+
+**Tests run and results:**
+- `make check`: 542 passed + 1 skipped, 91.40%. New tests: the check scores with the pinned version while the champion has moved on; a pinned version that cannot be loaded is refused naming both; no pinned version is refused; the marker reads back as the detector version.
+- **Step 9 result, on final code:** image rebuilt; `make detect-reset` (19:35 UTC); `make detect`: the job re-scored the whole topic from the start, ~1.26M rows in ~18 min (94 batches to drained), 0 restarts, 0 OOM kills, 2,183 hits of its 1.5 GiB limit. `make detect-check ARGS="--day 2013-12-03"` (run `detect-check-2013-12-03-5926384e`, 165,888 rows replayed incl. 6 clean + 1 injected history days): **MATCH: streamed 757 = offline 757, same IDs, bitwise-identical scores and KPIs, identical validation report** (validation, SYNTHETIC faults: 5 faults, 3 detected, KM median 3 [1, n/a], 7 incidents, 1 false; `detection_reports` parity true). **Check container peak 461.5 MiB of 1 GiB** (cgroup `memory.peak`, read every second; `memory.events` max 0, oom_kill 0). Step 9 measured 390 MiB on the earlier run.
+- `make test-integration` not re-run in this pass.
+
+**Decisions made:**
+- `DECISIONS.md` Step 9 row: (6) a lost message delays its cell's later rows until the state times out (60 min), accepted; (7) the check scores with the job's pinned version.
+
+**Open items:**
+- `make detect-reset` re-scores the whole topic and the topic grows with each check run (~18 min now).
+- Detector memory at its limit during a re-score (R1 re-check at Step 11).
+
 ## 2026-11-28 — Milestone 2 (between steps 10 and 11): local champion copy
 
 **What was built:**

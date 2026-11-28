@@ -360,6 +360,22 @@ def valid_rows() -> Column:
     return functools.reduce(operator.and_, present) & ids & on_grid
 
 
+# Pinned with the detector version: Step 9 changed the state layout (rows + per-partition progress).
+STATE_LAYOUT = "state-2"
+
+
+def version_marker(checkpoint: str | Path) -> Path:
+    """Where the detector version that scores `checkpoint` is pinned (`pin_version`)."""
+    return Path(f"{checkpoint}.detector")
+
+
+def pinned_version(checkpoint: str | Path) -> str | None:
+    """The detector version (`alarms.detector_version`) pinned to `checkpoint`; None before the
+    job's first start on it."""
+    marker = version_marker(checkpoint)
+    return marker.read_text().split()[0] if marker.exists() else None
+
+
 def pin_version(marker: Path, version: str) -> None:
     """Tie a checkpoint to the detector version that scores it (`marker` next to it): alarm
     IDs include the version, so a re-run micro-batch under another one would raise its alarms
@@ -399,8 +415,7 @@ def run(checkpoint: str) -> int:
         return 1
     scorer = scoring.Scorer.of(champion, tracking.MODEL)
     try:
-        # The state layout is pinned too: Step 9 changed it (rows + per-partition progress).
-        pin_version(Path(f"{checkpoint}.detector"), f"{scorer.detector_version} state-2")
+        pin_version(version_marker(checkpoint), f"{scorer.detector_version} {STATE_LAYOUT}")
     except ValueError as exc:
         log.error("%s", exc)
         return 1

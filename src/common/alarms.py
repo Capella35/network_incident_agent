@@ -32,6 +32,12 @@ def detector_version(model: str, version: str) -> str:
     return f"{model}/{version}"
 
 
+def registered_version(detector: str) -> tuple[str, str]:
+    """(model, version) of an alarm's detector version (`detector_version`'s inverse)."""
+    model, _, version = detector.rpartition("/")
+    return model, version
+
+
 def alarm_id(run: str, cell_id: str, interval_start: datetime, detector: str) -> str:
     """`ALM-<uuid5>` of (replay run, cell, interval, detector version)."""
     name = f"{run}|{telemetry.message_key(cell_id, interval_start)}|{detector}"
