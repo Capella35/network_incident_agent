@@ -299,12 +299,18 @@ def score_study(data_dir: Path, study: Run, v: Validation) -> ScoredStudy:
     threshold would mean something else): re-run `make train`."""
     run_id = study.info.run_id
     require_current(study)
-    tuned = tracking.load_tuned(run_id)
+    s = score_tuned(data_dir, tracking.load_tuned(run_id), v)
+    if study.data.tags.get("fault_schedule_fingerprint") != s.fault_schedule:
+        raise ValueError(f"study {run_id[:8]}: tuned on another fault schedule; `make train`")
+    return s
+
+
+def score_tuned(data_dir: Path, tuned: tracking.Tuned, v: Validation) -> ScoredStudy:
+    """Score the validation weeks with a tuned alarm rule and match its alarms to the ground
+    truth (`report.score`, Rule 6). No staleness check: see `score_study`."""
     scored = tuned.detector.score(v.frame)
     alarms = detectors.alarms(scored, tuned.threshold, tuned.alarm)
     result, fingerprint = report.score(data_dir, alarms, days=v.days, gaps=v.gaps)
-    if study.data.tags.get("fault_schedule_fingerprint") != fingerprint:
-        raise ValueError(f"study {run_id[:8]}: tuned on another fault schedule; `make train`")
     return ScoredStudy(tuned, scored, alarms, result, fingerprint)
 
 

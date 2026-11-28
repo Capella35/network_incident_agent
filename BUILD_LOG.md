@@ -20,6 +20,31 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-28 — Milestone 2, step 11: close-out (validation report, guardrails) — Milestone 2 done
+
+**What was built:**
+- `src/evaluation/validation_report.py` + `make validation-report`: the milestone's validation report from MLflow-tracked models. The registered champion (`detector` v1, from its package) and the baseline (latest feasible z-score study at its tuned threshold) score the same validation frame (`tune.load_validation`); alarms are matched through `evaluation.report.score` (Rule 6). It refuses a champion packaged with other features (`features.Spec.matches`; the config is checked before any data is read) or promoted on other days / ground truth / data snapshot (its registered `validation.*` tags), and a baseline tuned under another `features.yaml` or fault schedule (`tune.score_study`). One MLflow run in `detector-evaluation` (role `validation-report`): the report, both detectors' metrics (`baseline.*` for the z-score), per-fault outcomes of each.
+- Shared instead of copied: `evaluation.report.comparison_table` (moved from `models.ensemble`) and `outcomes_csv`; `models.tune.score_tuned` (the score-then-match step `score_study` now uses); `streaming.features.Spec.matches`. `make evaluate` is now described as the Step 5 check.
+
+**Tests run and results:**
+- `make check`: 547 passed + 1 skipped, 91.27%. New tests: the report compares both and logs one run with three artifacts; a champion packaged with a refitted reference is refused; a champion promoted on another data snapshot is refused; no feasible baseline is refused; `Spec.matches` (same pair, refitted reference, other config).
+- **Done when (the report part), real run:** `make validation-report` → MLflow run `3180d8e5` in 11 s, peak 861 MiB of the 1,536 MiB budget. Validation weeks 2013-12-02 → 12-15, SYNTHETIC faults (schedule 62d292f4), snapshot 80c52048: **champion 41/57 (71.9%), 0.29 false incidents/day, KM median 1 [0, 9]; z-score baseline 37/57 (64.9%), 0.86/day, KM median 0 [0, 18]**. Per type, champion vs z-score: backhaul 8/8 vs 7/8, cell outage 10/11 vs 10/11, config push 5/9 vs 1/9, congestion 1/12 vs 2/12, site power 17/17 vs 17/17. The champion's numbers equal those the promotion gate recorded (Step 7). The parity part of the Done when is Step 9's MATCH (757 = 757, exact, 2026-11-28). **Milestone 2's Definition of done is met**; the v1 quality bars are not (they are judged on test weeks at M6).
+- **Guardrails walked:**
+  - **R1 (memory limit per container): pass, with a recorded risk.** Every service has a limit (preflight 64 MiB, Kafka 1 GiB, kafka-init 256 MiB, Postgres 512 MiB, MLflow 768 MiB, Grafana 640 MiB, detector 1.5 GiB, detect-check 1 GiB). `docker stats` after the full re-score (the whole topic, ~1.26M rows): detector 1.43 of 1.5 GiB, Kafka 575 MiB, Grafana 405 MiB, Postgres 171 MiB, MLflow 163 MiB; `oom_kill` 0 and 0 restarts in every container. The detector reached its limit 2,183 times during the re-score (memory reclaimed, never killed); `detect-check` peaked at 461.5 MiB of 1 GiB; Optuna-era memory (studies, report) within the 1,536 MiB process budget (this report 861 MiB). Risk: the detector has no headroom with many runs in state; the memory work stays open.
+  - **R3 (cleanup): pass.** `make clean` / `make clean-plan` exist (Step 10); the plan lists 305 MLflow runs beyond retention (the real prune: the user decides). Disk: Docker volumes Kafka 1.62 GB, Postgres 817 MB, Grafana 250 MB, Spark checkpoints 161 MB, MLflow 66 MB, champion copies 2.3 MB; `data/` 35 MB; Docker build cache 19.8 GB (not covered by `make clean`); the laptop's disk is 91% used (21 GiB free).
+  - **R4 (Optuna budget): pass.** `tune.yaml` `budget: n_trials 40, timeout_s 900`, passed to `study.optimize` (`tune.run_study`); every study since Step 6 finished within it (`BUILD_LOG.md` 2026-11-25 → 27).
+  - **S5 (pinned versions): pass.** Images by exact tag (postgres 18.7-alpine3.23, apache/kafka 4.3.2, mlflow v3.17.2, grafana 13.2.6; detector bases uv 0.13.8, temurin 17.0.21.1_2-jre-noble, python 3.11.17-slim-bookworm), Kafka jars by version + SHA-256, Python packages by `uv.lock`; no `latest`.
+  - **P4 (data never committed): pass.** `git ls-files data` = `README.md`, `manifest-template.md`, `manifest.json`; no parquet, pickle, database, `mlruns` or ground-truth file in any commit (`git log --all --name-only`).
+- `make test-integration` not re-run at close-out.
+
+**Decisions made:**
+- `DECISIONS.md` 2026-11-28: the baseline is the tuned z-score study (same false-incident budget), and the report refuses a champion that does not match the frame or the data it was promoted on.
+
+**Open items:**
+- From `/code-review` (pre-existing): `tune.require_current` checks a study's `features.yaml` but not the fitted reference, so after `make baseline` refits with an unchanged config a stale study is still scored (`promote`, `ensemble`, this report). Fix: log a reference fingerprint on each study and compare it.
+- The seeds in the report are read from the current config (labeled so), not from the runs.
+- Detector memory (R1 risk); Docker build cache 19.8 GB and disk at 91% (user's call: `docker builder prune`).
+
 ## 2026-11-28 — Milestone 2, step 9 close-out: the check scores the job's pinned version
 
 **What was built:**
