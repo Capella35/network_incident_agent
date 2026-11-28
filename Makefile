@@ -1,5 +1,5 @@
 .PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate train union diagnose separation promote rollback inject clean \
-	env-check up down ps logs spark-smoke db-migrate db-topology replay sink replay-check dashboards \
+	env-check up down ps logs spark-smoke detect detect-stop detect-reset db-migrate db-topology replay sink replay-check dashboards \
 	test-integration
 
 # Local stack. .env is read by Compose and sourced for Python; its values are never printed.
@@ -91,8 +91,8 @@ env-check:
 up: env-check  ## Start the local stack (Kafka, Postgres, Grafana, MLflow) and wait until healthy
 	$(COMPOSE) up -d --wait
 
-down:  ## Stop the stack (volumes kept)
-	$(COMPOSE) down
+down:  ## Stop the stack, the detector job included (volumes kept)
+	$(COMPOSE) --profile spark down
 
 ps:  ## Service status
 	$(COMPOSE) ps -a
@@ -100,8 +100,19 @@ ps:  ## Service status
 logs:  ## Last 50 log lines per service
 	$(COMPOSE) logs --tail=50
 
-spark-smoke: env-check  ## One-off Spark local-mode job (Spark profile; off by default)
-	$(COMPOSE) --profile spark run --rm spark
+spark-smoke: env-check  ## One-off Spark local-mode job in the detector image (no stack needed)
+	$(COMPOSE) --profile spark run --rm --no-deps --entrypoint python detector -c \
+		"from pyspark.sql import SparkSession; print(SparkSession.builder.master('local[1]').getOrCreate().range(10).count())"
+
+detect: env-check  ## Build the detector image and start the Spark job on the champion (Spark profile; make logs)
+	$(COMPOSE) --profile spark up -d --build --wait detector
+
+detect-stop: env-check  ## Stop the Spark detector job (its checkpoint is kept)
+	$(COMPOSE) --profile spark stop detector
+
+detect-reset: env-check  ## Remove the detector job and its checkpoint (needed after a promotion); then make detect
+	$(COMPOSE) --profile spark rm --stop --force detector
+	docker volume rm --force netops_spark-checkpoints
 
 db-migrate: env-check  ## Apply the idempotent DB migrations (DB_MIGRATIONS) to the running stack
 	$(foreach m,$(DB_MIGRATIONS),$(call PSQL_ADMIN,$(m)) &&) true

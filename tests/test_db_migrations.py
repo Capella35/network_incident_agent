@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-DB_DIR = Path(__file__).resolve().parents[1] / "infra" / "db"
+from tests.factories import DB_DIR
+
 MIGRATIONS = sorted(p for p in DB_DIR.glob("0*.sql") if p.name != "001_init.sql")
 
 # Statement patterns that would fail, or change data, on a second run. Checked per statement.

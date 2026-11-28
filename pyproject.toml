@@ -28,6 +28,14 @@ dev = [
     "ruff>=0.8",
     "types-pyyaml>=6.0",
 ]
+spark = [
+    "pyspark==4.2.1",
+]
+
+[tool.uv]
+# The Spark group installs locally and in CI too, so mypy checks the job against real PySpark;
+# the detector image installs only it (infra/spark/Dockerfile).
+default-groups = ["dev", "spark"]
 
 [build-system]
 requires = ["hatchling"]

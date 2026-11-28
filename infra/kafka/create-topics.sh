@@ -1,5 +1,5 @@
 #!/bin/bash
-# Create the milestone-1 topics (idempotent) and enforce bounded retention (guardrail R2).
+# Create the topics (idempotent) and enforce bounded retention (guardrail R2).
 #
 # Retention deletes whole closed segments, so segment.bytes is kept well below
 # retention.bytes; otherwise the 1 GiB default segment would never roll and never be deleted.
@@ -14,6 +14,7 @@ BIN=/opt/kafka/bin
 TOPICS=(
   "telemetry.raw|6|604800000|268435456|67108864"   # 7 days, 256 MiB/partition, 64 MiB segments
   "telemetry.dlq|1|604800000|67108864|16777216"    # 7 days,  64 MiB,           16 MiB segments
+  "alarms|6|604800000|67108864|16777216"           # 7 days,  64 MiB/partition, 16 MiB segments (M2 step 8)
 )
 
 for spec in "${TOPICS[@]}"; do

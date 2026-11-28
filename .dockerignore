@@ -1,0 +1,8 @@
+# Build context = repo root (infra/spark/Dockerfile). Allowlist: only what the detector image
+# installs. Secrets (the env file), data/, and .venv never enter an image (Rules 3, 8; P4).
+*
+!pyproject.toml
+!uv.lock
+!README.md
+!src/
+**/__pycache__

@@ -25,17 +25,15 @@ from pathlib import Path
 import mlflow
 from mlflow import MlflowClient
 from mlflow.entities.model_registry import ModelVersion
-from mlflow.exceptions import MlflowException
 
 from common import process
 from evaluation import metrics, report
 from models import cli, detectors, tracking, tune
+from models.tracking import ALIAS, MODEL, champion
 from streaming import features
 
 log = logging.getLogger("models.promote")
 
-MODEL = "detector"
-ALIAS = "champion"
 EXPERIMENT = "detector-promotion"
 PREVIOUS = "previous_champion"  # version tag: the version this one replaced
 ROLLED_BACK = "rolled_back"  # version tag: `--rollback` moved the alias off it
@@ -124,20 +122,6 @@ def gate(candidate: Numbers, incumbent: Numbers | None, max_false_per_day: float
     return Verdict(
         True, f"catches {candidate.detected} > incumbent's {incumbent.detected}, within the cap"
     )
-
-
-def champion(client: MlflowClient) -> ModelVersion | None:
-    """The version `ALIAS` points to; None before the first promotion. Any other registry error
-    is raised: an unreachable server must never read as "no incumbent"."""
-    try:
-        model = client.get_registered_model(MODEL)
-    except MlflowException as exc:
-        if exc.error_code == "RESOURCE_DOES_NOT_EXIST":
-            return None
-        raise
-    if ALIAS not in model.aliases:
-        return None
-    return client.get_model_version_by_alias(MODEL, ALIAS)
 
 
 def _row(name: str, n: Numbers | None) -> str:

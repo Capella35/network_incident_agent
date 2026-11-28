@@ -3,10 +3,31 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
+from typing import Any, Protocol
 
 DEFAULT_BOOTSTRAP = "127.0.0.1:9092"  # the broker's host listener (infra/docker-compose.yml)
 
 Config = dict[str, str | int | bool]
+
+
+class Producer(Protocol):
+    """What this repo's producers use of `confluent_kafka.Producer` (fakes in unit tests)."""
+
+    def produce(
+        self,
+        topic: str,
+        *,
+        value: bytes,
+        key: bytes,
+        on_delivery: Callable[[Any, Any], None] | None = None,
+    ) -> None:
+        """`on_delivery(err, msg)` runs from `flush`/`poll` once the broker answers; `err` is
+        None on success. A message that failed for good is no longer queued, so `flush`
+        returning 0 alone does not mean it was delivered."""
+        ...
+
+    def flush(self, timeout: float) -> int: ...
 
 
 def bootstrap_servers() -> str:

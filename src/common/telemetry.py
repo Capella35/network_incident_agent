@@ -38,6 +38,31 @@ TRAFFIC_FIELDS = ("sms_in", "sms_out", "call_in", "call_out", "internet")
 MODELED_FIELDS = ("load_ratio", "latency_ms", "drop_rate")
 
 
+def _check_topology_id(v: str, level: int) -> str:
+    entity = load_domain().topology_types()[level]
+    if not entity.matches(v):
+        raise ValueError(f"not a {entity.name} id")
+    return v
+
+
+def check_cell_id(v: str) -> str:
+    """A cell ID (the lowest topology level), else ValueError: a pydantic field validator."""
+    return _check_topology_id(v, -1)
+
+
+def check_site_id(v: str) -> str:
+    return _check_topology_id(v, -2)
+
+
+def check_interval_start(v: datetime) -> datetime:
+    """Timezone-aware UTC on the interval grid, else ValueError."""
+    if v.tzinfo is None or v.utcoffset() != UTC.utcoffset(None):
+        raise ValueError("interval_start must be timezone-aware UTC")
+    if v.second or v.microsecond or v.minute % INTERVAL_MINUTES:
+        raise ValueError(f"interval_start must be on the {INTERVAL_MINUTES}-minute grid")
+    return v.astimezone(UTC)
+
+
 class TelemetryMessage(BaseModel):
     """One `telemetry.raw` message. Invalid rows raise `pydantic.ValidationError`."""
 
@@ -59,30 +84,9 @@ class TelemetryMessage(BaseModel):
     latency_ms: Annotated[float | None, Field(default=None, gt=0.0, allow_inf_nan=False)]
     drop_rate: Annotated[float | None, Field(default=None, ge=0.0, le=1.0, allow_inf_nan=False)]
 
-    @field_validator("cell_id")
-    @classmethod
-    def _cell_id(cls, v: str) -> str:
-        cell = load_domain().topology_types()[-1]
-        if not cell.matches(v):
-            raise ValueError(f"not a {cell.name} id")
-        return v
-
-    @field_validator("site_id")
-    @classmethod
-    def _site_id(cls, v: str) -> str:
-        site = load_domain().topology_types()[-2]
-        if not site.matches(v):
-            raise ValueError(f"not a {site.name} id")
-        return v
-
-    @field_validator("interval_start")
-    @classmethod
-    def _utc_on_grid(cls, v: datetime) -> datetime:
-        if v.tzinfo is None or v.utcoffset() != UTC.utcoffset(None):
-            raise ValueError("interval_start must be timezone-aware UTC")
-        if v.second or v.microsecond or v.minute % INTERVAL_MINUTES:
-            raise ValueError(f"interval_start must be on the {INTERVAL_MINUTES}-minute grid")
-        return v.astimezone(UTC)
+    _cell_id = field_validator("cell_id")(check_cell_id)
+    _site_id = field_validator("site_id")(check_site_id)
+    _utc_on_grid = field_validator("interval_start")(check_interval_start)
 
     @model_validator(mode="after")
     def _gap_rule(self) -> TelemetryMessage:
@@ -100,6 +104,12 @@ class TelemetryMessage(BaseModel):
 
     def to_json(self) -> bytes:
         return self.model_dump_json().encode("utf-8")
+
+
+def local_day_start(t: datetime) -> datetime:
+    """The start of `t`'s local (Europe/Rome) day, in `t`'s time zone; `t` timezone-aware."""
+    midnight = t.astimezone(LOCAL_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
+    return midnight.astimezone(t.tzinfo)
 
 
 def message_key(cell_id: str, interval_start: datetime) -> str:

@@ -25,6 +25,9 @@ from typing import Any
 import mlflow
 import pandas as pd
 import polars as pl
+from mlflow import MlflowClient
+from mlflow.entities.model_registry import ModelVersion
+from mlflow.exceptions import MlflowException
 from mlflow.pyfunc.model import PythonModel
 
 from common import splits
@@ -32,6 +35,8 @@ from models.detectors import AlarmParams, Detector, load_config
 from streaming import features
 
 EXPERIMENT = "detector-candidates"
+MODEL = "detector"  # the registered model promotions go to (models.promote)
+ALIAS = "champion"
 _RUNTIME = ("numpy", "pandas", "polars", "pyarrow", "pydantic", "pyyaml", "scikit-learn")
 
 
@@ -96,6 +101,35 @@ def load_package(model_uri: str) -> Package:
     if spec is None:
         raise ValueError(f"{model_uri}: no feature spec (not a promotion package)")
     return Package(tuned, spec)
+
+
+def champion(client: MlflowClient) -> ModelVersion | None:
+    """The version `ALIAS` points to; None before the first promotion. Any other registry error
+    is raised: an unreachable server must never read as "no incumbent"."""
+    try:
+        model = client.get_registered_model(MODEL)
+    except MlflowException as exc:
+        if exc.error_code == "RESOURCE_DOES_NOT_EXIST":
+            return None
+        raise
+    if ALIAS not in model.aliases:
+        return None
+    return client.get_model_version_by_alias(MODEL, ALIAS)
+
+
+@dataclass(frozen=True)
+class Champion:
+    package: Package
+    version: str  # the registered version, so the alias moving later changes nothing loaded
+
+
+def load_champion(client: MlflowClient) -> Champion:
+    """The package the champion alias points to, loaded by version. Raises ValueError if there
+    is no champion yet, or (`load_package`) if it is not a package."""
+    current = champion(client)
+    if current is None:
+        raise ValueError(f"no {MODEL}@{ALIAS} yet: promote a candidate first (make promote)")
+    return Champion(load_package(f"models:/{MODEL}/{current.version}"), current.version)
 
 
 def start_run(experiment: str, run_name: str, *, nested: bool = False) -> mlflow.ActiveRun:
