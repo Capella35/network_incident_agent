@@ -20,6 +20,29 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-28 — Milestone 2, step 9: parity check (`make detect-check`)
+
+**What was built:**
+- `src/evaluation/detect_check.py` + `make detect-check ARGS="--day …"` + Compose `detect-check` (the detector image, same build anchor; `data/` and the job's checkpoint read-only; Postgres as `readonly`; 1 GiB). Replays the day after its history (training days clean, validation days injected, one run ID; `offline.history_days` / `split_history`, shared with the offline path), waits until the job's Spark commit log reaches the topic's end offsets, scores the same rows offline with the same champion (`Scorer.of` / `Scorer.alarms`, shared with the job), compares IDs, exact scores and KPIs, then the Step 5 report of each set. Validation days only (Rule 7); ground truth only via `evaluation.report.score` (Rule 6).
+- Fixes the check forced (each measured, `DECISIONS.md` 2026-11-27/28): (1) `detectors.SCORE_BLOCK`: the autoencoder scores in fixed 128-row chunks, the last zero-padded (in the image, OpenBLAS gave 511 of 20,736 rows other last bits in batches of 1-39 rows, 22 in batches of 129-900); (2) holes in the job's reordering buffer are given up only once every Kafka partition has delivered a later row of the cell (`CellState.seen`, state layout `state-2`), replacing Step 8's one-day data-time hold, which dropped 2,218 rows that were only late while a fast replay was being written (353 scores off, one alarm lost); a wall-clock hold was tried and dropped at review (restart with a backlog would give up every waiting hole); rows waiting behind a lost message are scored when the run's state times out; (3) the check waits on the commit log, not heartbeats (heartbeats counted the backlog and let it compare before the run was scored).
+- Shared: `common.kafka.end_offset(s)` (the retried watermark read, now also used by `replay_check`), `offline.features_of(..., cfg)`, `tests/factories.alarm_frame` / `noisy_rows` with Kafka partitions.
+
+**Tests run and results:**
+- **Done when (milestone):** `make detect-check ARGS="--day 2013-12-03"` → **MATCH: streamed 757 alarms = offline 757, same IDs, bitwise-identical scores and KPIs, identical validation report** (validation, SYNTHETIC faults: 5 faults, 3 detected, KM median 3 [1, n/a], 7 incidents, 1 false). Earlier runs on the way: MISMATCH 354 (data-time hold, padding to a minimum only), 0 streamed (heartbeat wait compared too early), MATCH (wall-clock hold, before review), then MATCH on the final code.
+- `make check`: 518 passed, 1 skipped (the batch-size test runs only where numpy uses OpenBLAS: CI and the image, not macOS/Accelerate), coverage 90.88%. `make test-integration`: 26 passed.
+- Memory (cgroup): the check container peaked at 390 MiB of 1 GiB, limit never hit, 0 OOM kills. **The detector hit its 1.5 GiB limit 1,427 times this run** (1.35 GiB anonymous; JVM 870 MB RSS with a 512 MB heap; no OOM kill), with ~13 replay runs in state at once (Step 8: 1.47 GiB peak incl. cache, limit never hit, ~7 runs).
+- Kafka's health probe (a JVM per probe) took 6-16 s against its 10 s timeout under load once; Compose refused to start the check until it recovered (no restart).
+- Reviewed: `/simplify` (4 reviewers: fixed-chunk scoring, partition-progress rule, frozen report, shared split rule and end offsets, one producer, rows loaded after the wait, one image anchor; skipped: reading Spark's checkpoint log instead of a heartbeat offset column, forcing one BLAS thread in code). `/code-review` medium: 4 important (old checkpoint not refused → `state-2` marker; history length from features.yaml instead of the champion's config; empty batch without `partition`; rows behind a lost message waiting forever → scored at the state timeout) + nits (one-line errors via `RUN_ERRORS`, duplicated split rule, `detect-check` without a build, unprocessed history day) — all fixed. Found only on the stack after review: the Kafka `partition` column selected from the parsed frame (Spark planning error) → fixed, re-verified.
+
+**Decisions made:** (also in DECISIONS.md) bar stays exact; fixed-chunk scoring (the user's choice over a tolerance); partition-progress hole rule; commit-log wait.
+
+**Open items:**
+- **Detector memory at its limit** with many runs in state: try `spark.sql.streaming.maxBatchesToRetainInMemory=1`, smaller Arrow batches, or the RocksDB state store (needs `make detect-reset`), measure at Step 11's R1 re-check.
+- Kafka health probe timeout (10 s) is marginal under load.
+- The check reads Spark's checkpoint layout (`commits/`, `offsets/`); a heartbeat column with the batch's end offsets would use only public APIs.
+- Tuning and promotion numbers were not re-measured after `SCORE_BLOCK` (scores move by ~1e-15).
+- Kafka and `telemetry_raw` keep growing with check runs (about 13 runs in the topic now).
+
 ## 2026-11-27 — Milestone 2, step 8: Spark detector job
 
 **What was built:**

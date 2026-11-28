@@ -31,6 +31,13 @@ from common.domain.loader import FrozenModel, read_config
 from streaming import features
 
 CONTRIB = "contrib_"
+# The autoencoder scores in chunks of exactly this many rows, the last one padded with zero rows,
+# so every matrix product has the same shape and a row's score cannot depend on how many rows
+# were scored with it. BLAS takes other paths for small matrices and for the rows past its last
+# full block (measured 2026-11-27 in the detector image: 511 of 20,736 rows differed by up to
+# 1.8e-15 in batches of 1-39 rows, 22 in batches of 129-900). The Spark job scores what each
+# micro-batch releases; offline paths score whole days.
+SCORE_BLOCK = 128
 
 
 class AlarmParams(FrozenModel):
@@ -176,8 +183,13 @@ class Autoencoder(Detector):
         return self
 
     def _score(self, frame: pl.DataFrame) -> tuple[np.ndarray, pl.DataFrame]:
-        x = self.scaler.transform(_matrix(frame, self.columns))
-        err = (x - self.model.predict(x)) ** 2
+        rows = self.scaler.transform(_matrix(frame, self.columns))
+        n = rows.shape[0]
+        x = np.zeros((n + (-n % SCORE_BLOCK), rows.shape[1]))  # zero rows pad the last chunk
+        x[:n] = rows
+        chunks = [self.model.predict(x[i : i + SCORE_BLOCK]) for i in range(0, len(x), SCORE_BLOCK)]
+        recon = np.concatenate(chunks) if chunks else x
+        err = ((x - recon) ** 2)[:n]
         contrib = pl.DataFrame({k: err[:, idx].mean(axis=1) for k, idx in self.kpi_slices.items()})
         return err.mean(axis=1), contrib
 

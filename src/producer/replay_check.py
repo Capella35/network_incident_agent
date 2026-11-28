@@ -239,18 +239,8 @@ class _KafkaRangeReader:
     def __init__(self, consumer: Any) -> None:
         self.c = consumer
 
-    def end_offset(self, topic: str, partition: int, attempts: int = 20) -> int:
-        from confluent_kafka import KafkaException, TopicPartition
-
-        for i in range(attempts):
-            try:
-                _, high = self.c.get_watermark_offsets(TopicPartition(topic, partition), timeout=10)
-                return int(high)
-            except KafkaException:  # e.g. NOT_LEADER right after a topic is created
-                if i == attempts - 1:  # read-only call: retrying is always safe
-                    raise
-                time.sleep(0.5)
-        raise CheckError("unreachable")  # pragma: no cover
+    def end_offset(self, topic: str, partition: int) -> int:
+        return kafka.end_offset(self.c, topic, partition)
 
     def assign_from(self, topic: str, starts: Mapping[int, int]) -> None:
         from confluent_kafka import TopicPartition

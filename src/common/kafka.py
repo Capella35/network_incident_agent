@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
@@ -59,3 +60,25 @@ def producer_config(bootstrap: str, client_id: str) -> Config:
 def consumer_config(bootstrap: str, group_id: str, **extra: str | int | bool) -> Config:
     """A consumer that never auto-commits; callers commit (or never do) explicitly."""
     return {**base_config(bootstrap), "group.id": group_id, "enable.auto.commit": False, **extra}
+
+
+def end_offset(consumer: Any, topic: str, partition: int, attempts: int = 20) -> int:
+    """The partition's end offset (high watermark) via a `confluent_kafka.Consumer`, retried:
+    right after a topic is created a broker can answer NOT_LEADER for a moment."""
+    from confluent_kafka import KafkaException, TopicPartition
+
+    for i in range(attempts):
+        try:
+            _, high = consumer.get_watermark_offsets(TopicPartition(topic, partition), timeout=10)
+            return int(high)
+        except KafkaException:
+            if i == attempts - 1:  # read-only call: retrying is always safe
+                raise
+            time.sleep(0.5)
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def end_offsets(consumer: Any, topic: str) -> dict[int, int]:
+    """End offset of every partition of `topic`."""
+    partitions = consumer.list_topics(topic, timeout=10).topics[topic].partitions
+    return {p: end_offset(consumer, topic, p) for p in sorted(partitions)}

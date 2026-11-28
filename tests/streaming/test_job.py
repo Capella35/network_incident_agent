@@ -18,16 +18,16 @@ from common import alarms
 from common.alarms import AlarmMessage
 from common.telemetry import TelemetryMessage
 from streaming import job, scoring
-from tests.factories import DB_DIR, noisy_rows, zscore_scorer
+from tests.factories import DB_DIR, PARTITIONS, noisy_rows, zscore_scorer
 from tests.fakes import FakeProducer
 
 CFG = job.load_config()
 
 
-def spark_state(value: bytes | None = None, *, timed_out: bool = False) -> GroupState:
+def spark_state(value: tuple[bytes, str] | None = None, *, timed_out: bool = False) -> GroupState:
     """A `GroupState` as Spark hands it to the function (no JVM needed)."""
     return GroupState(
-        optionalValue=Row(value) if value is not None else Row(),
+        optionalValue=Row(*value) if value is not None else Row(),
         batchProcessingTimeMs=1_000,
         eventTimeWatermarkMs=GroupState.NO_TIMESTAMP,
         timeoutConf=GroupStateTimeout.ProcessingTimeTimeout,
@@ -57,7 +57,7 @@ def test_schemas_follow_the_message_and_the_scoring_frames() -> None:
 
 def test_update_keeps_state_across_batches_and_drops_it_on_timeout() -> None:
     rows = noisy_rows(300)
-    update = job.make_update(zscore_scorer(threshold=1.0), CFG)
+    update = job.make_update(zscore_scorer(threshold=1.0), CFG, PARTITIONS)
     state = spark_state()
     out = pd.concat(update(("run-1", "CELL-1-1"), iter([as_spark_input(rows.head(200))]), state))
     assert state.exists
@@ -65,16 +65,18 @@ def test_update_keeps_state_across_batches_and_drops_it_on_timeout() -> None:
     progress = out[out["alarm_id"].isna()]
     assert progress[["n_scored", "n_late"]].to_numpy().tolist() == [[200, 0]]
     assert (out["alarm_id"].notna()).sum() > 0
-    later = spark_state(state.get[0])
+    later = spark_state(state.get)
     more = pd.concat(update(("run-1", "CELL-1-1"), iter([as_spark_input(rows.slice(150))]), later))
     assert more[more["alarm_id"].isna()][["n_scored", "n_late"]].to_numpy().tolist() == [[100, 50]]
-    held = scoring.CellState.decode(later.get[0])
+    held = scoring.CellState.decode(*later.get)
     assert held.scored.height == 300
-    waiting = spark_state()  # rows after a hole that never fills: still waiting at the timeout
-    list(update(("run-1", "CELL-1-1"), iter([as_spark_input(rows.slice(1, 9))]), waiting))
-    gone = spark_state(waiting.get[0], timed_out=True)
+    waiting = spark_state()  # partition 0 never delivers (row 0 lost): rows wait at the timeout
+    quiet = rows.slice(1, 9).filter(pl.col("partition") != 0)
+    list(update(("run-1", "CELL-1-1"), iter([as_spark_input(quiet)]), waiting))
+    gone = spark_state(waiting.get, timed_out=True)
     [out] = list(update(("run-1", "CELL-1-1"), iter([]), gone))
-    assert out[["n_scored", "n_late"]].to_numpy().tolist() == [[0, 9]]
+    progress = out[out["alarm_id"].isna()]  # waiting rows are scored when the run goes quiet
+    assert progress[["n_scored", "n_late"]].to_numpy().tolist() == [[8, 0]]
     assert not gone.exists
 
 
@@ -82,7 +84,11 @@ def batch_output() -> tuple[scoring.Step, pl.DataFrame]:
     """One cell-day scored, and the micro-batch output the driver gets for it."""
     rows = noisy_rows(144)
     result = scoring.step(
-        scoring.CellState.empty(), rows, zscore_scorer(threshold=1.0), run="run-1", hold=CFG.hold
+        scoring.CellState.empty(),
+        rows,
+        zscore_scorer(threshold=1.0),
+        run="run-1",
+        partitions=PARTITIONS,
     )
     return result, job.from_spark(job.to_spark(job.step_output(result)), job.OUTPUT)
 

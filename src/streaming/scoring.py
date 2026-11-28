@@ -9,11 +9,19 @@ different partitions and a fast replay delivers them out of order across micro-b
 `pending` until every interval before them has arrived, and only the gap-free run after the last
 scored interval is scored. The replay sends every cell for every interval (gaps as `data_gap`
 rows), so a hole means "not here yet". A cell's first rows in a run wait for the start of their
-local day (a replay sends whole local days; measured 2026-11-27, starting at the
-first row to arrive instead lost ~280 of a backlog's first rows to lagging partitions). Once the
-cell's newest row is `hold` past a hole, the hole is given up as missing, so one lost message
-cannot stall a cell. A row at or before the last
-scored interval arrives too late to score (scores are final) and is only counted.
+local day (a replay sends whole local days; measured 2026-11-27, starting at the first row to
+arrive instead lost ~280 of a backlog's first rows to lagging partitions).
+
+A hole is given up as lost only once every partition has delivered a later row of the cell
+(`CellState.seen`): a partition holds a run's rows in interval order (the replay sends them in
+order, the producer keeps per-partition order), so a row still missing behind all partitions'
+newest rows will never come. This needs no clock and does not depend on how far partitions are
+apart: during a fast replay one partition can be a local day of data behind another, and a hold
+measured in data time gave up 2,218 rows that were only late (Step 9, 2026-11-27); a wall-clock
+hold would give up every waiting hole after a restart with a backlog. A lost message whose cell
+never again reaches every partition keeps its rows waiting until the run goes quiet (its state
+times out); then they are scored, the hole given up. A row at or
+before the last scored interval arrives too late to score (scores are final) and is only counted.
 
 Features: each local day the released rows fall on is computed with `features.compute` on that
 day's rows plus the `history_days` local days before it: the `level.days` a day's level offsets
@@ -30,15 +38,20 @@ the frame starts (measured 2026-11-27). Then the champion's detector scores the 
 from __future__ import annotations
 
 import io
+import json
 import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 import polars as pl
 
 from common import alarms, telemetry
 from models import detectors
 from streaming import features
+
+if TYPE_CHECKING:  # not at run time: Spark workers unpickle a Scorer without importing mlflow
+    from models import tracking
 
 SCHEMA: dict[str, pl.DataType] = {
     "cell_id": pl.String(),
@@ -75,21 +88,44 @@ class Scorer:
     spec: features.Spec
     detector_version: str
 
+    @classmethod
+    def of(cls, champion: tracking.Champion, model: str) -> Scorer:
+        """The scorer for a loaded champion package (`tracking.load_champion`) of `model`."""
+        tuned = champion.package.tuned
+        version = alarms.detector_version(model, champion.version)
+        return cls(tuned.detector, tuned.threshold, tuned.alarm, champion.package.spec, version)
+
+    def alarms(self, frame: pl.DataFrame, run: str) -> pl.DataFrame:
+        """Alarms (as `NO_ALARMS`) of feature rows `frame` of replay run `run`."""
+        hits = detectors.alarms(self.detector.score(frame), self.threshold, self.alarm)
+        ids = [
+            alarms.alarm_id(run, cell, start, self.detector_version)
+            for cell, start in hits.select("cell_id", "interval_start").iter_rows()
+        ]
+        return hits.with_columns(
+            alarm_id=pl.Series(ids, dtype=pl.String),
+            replay_run_id=pl.lit(run),
+            detector_version=pl.lit(self.detector_version),
+        ).select(NO_ALARMS.columns)
+
 
 @dataclass(frozen=True)
 class CellState:
     """One cell's rows (`SCHEMA`): `scored` (the last `history_days` local days of them, what
-    new rows' features need) and `pending` (arrived, waiting for the rows before them)."""
+    new rows' features need), `pending` (arrived, waiting for the rows before them), and `seen`:
+    per Kafka partition, the latest interval of the cell it has delivered."""
 
     scored: pl.DataFrame
     pending: pl.DataFrame
+    seen: dict[int, datetime]
 
     @classmethod
     def empty(cls) -> CellState:
         rows = pl.DataFrame(schema=SCHEMA)
-        return cls(rows, rows)
+        return cls(rows, rows, {})
 
-    def encode(self) -> bytes:
+    def encode(self) -> tuple[bytes, str]:
+        """(the rows as compressed Arrow IPC, `seen` as JSON): the Spark state's two fields."""
         both = pl.concat(
             [
                 self.scored.with_columns(pl.lit(value=False).alias(_PENDING)),
@@ -98,13 +134,17 @@ class CellState:
         )
         buf = io.BytesIO()
         both.write_ipc(buf, compression="lz4")
-        return buf.getvalue()
+        return buf.getvalue(), json.dumps({str(p): t.isoformat() for p, t in self.seen.items()})
 
     @classmethod
-    def decode(cls, blob: bytes) -> CellState:
+    def decode(cls, blob: bytes, seen: str) -> CellState:
         both = pl.read_ipc(io.BytesIO(blob))
         pending = pl.col(_PENDING)
-        return cls(both.filter(~pending).drop(_PENDING), both.filter(pending).drop(_PENDING))
+        return cls(
+            both.filter(~pending).drop(_PENDING),
+            both.filter(pending).drop(_PENDING),
+            {int(p): datetime.fromisoformat(t) for p, t in json.loads(seen).items()},
+        )
 
 
 @dataclass(frozen=True)
@@ -126,19 +166,25 @@ def history_days(cfg: features.Config) -> int:
     return cfg.level.days + math.ceil(reach / timedelta(days=1))
 
 
-def releasable(pool: pl.DataFrame, after: datetime, hold: timedelta) -> int:
+def releasable(pool: pl.DataFrame, after: datetime, lost_before: datetime | None) -> int:
     """How many leading rows of `pool` (sorted, one per interval, all after `after`) can be
-    scored now: the run with no hole after `after`, a hole given up once `pool`'s newest row is
-    at least `hold` past it."""
+    scored now: the run with no hole after `after`, past holes whose intervals are all before
+    `lost_before` (given up as lost; None: none is)."""
     times: list[datetime] = pool["interval_start"].to_list()
     expected = after + telemetry.INTERVAL
     n = 0
     for t in times:
-        if t != expected and times[-1] - expected < hold:
+        if t != expected and (lost_before is None or t > lost_before):
             break
         n += 1
         expected = t + telemetry.INTERVAL
     return n
+
+
+def _lost_before(seen: dict[int, datetime], partitions: int) -> datetime | None:
+    """Missing intervals before this are lost: every partition has delivered a row at or after
+    it (None until each of the topic's `partitions` has delivered one)."""
+    return min(seen.values()) if len(seen) == partitions else None
 
 
 def new_features(scored: pl.DataFrame, fresh: pl.DataFrame, spec: features.Spec) -> pl.DataFrame:
@@ -160,20 +206,24 @@ def new_features(scored: pl.DataFrame, fresh: pl.DataFrame, spec: features.Spec)
     )
 
 
-def _with_alarm_ids(hits: pl.DataFrame, run: str, detector: str) -> pl.DataFrame:
-    ids = [
-        alarms.alarm_id(run, cell, start, detector)
-        for cell, start in hits.select("cell_id", "interval_start").iter_rows()
-    ]
-    return hits.with_columns(
-        alarm_id=pl.Series(ids, dtype=pl.String),
-        replay_run_id=pl.lit(run),
-        detector_version=pl.lit(detector),
-    ).select(NO_ALARMS.columns)
-
-
-def step(state: CellState, new: pl.DataFrame, scorer: Scorer, *, run: str, hold: timedelta) -> Step:
-    """Score one cell's released rows of replay run `run` (see the module docstring)."""
+def step(
+    state: CellState,
+    new: pl.DataFrame,
+    scorer: Scorer,
+    *,
+    run: str,
+    partitions: int,
+    quiet: bool = False,
+) -> Step:
+    """Score one cell's released rows of replay run `run` (see the module docstring). `new`:
+    the rows plus `partition`, the Kafka partition each came from (of `partitions`). `quiet`:
+    the run has sent nothing for a while (its state timed out), so every hole still open is
+    given up and every waiting row is scored."""
+    seen = dict(state.seen)
+    if not new.is_empty():
+        newest = new.group_by("partition").agg(pl.col("interval_start").max())
+        for p, t in newest.iter_rows():
+            seen[p] = max(t, seen.get(p, t))
     last = state.scored["interval_start"].max()  # None while nothing is scored
     incoming = rows_frame(new)
     on_time = incoming.filter(
@@ -188,17 +238,17 @@ def step(state: CellState, new: pl.DataFrame, scorer: Scorer, *, run: str, hold:
     if isinstance(last, datetime):
         after = last
     elif pool.is_empty():
-        return Step(NO_ALARMS, state, 0, late)
+        return Step(NO_ALARMS, CellState(state.scored, pool, seen), 0, late)
     else:  # nothing scored yet: wait for the run's first interval (a replay sends whole days)
         after = telemetry.local_day_start(pool["interval_start"][0]) - telemetry.INTERVAL
-    n = releasable(pool, after, hold)
+    lost = pool.item(-1, "interval_start") + telemetry.INTERVAL if quiet else None
+    n = releasable(pool, after, lost or _lost_before(seen, partitions))
     if n == 0:  # nothing released: a detector cannot score zero rows
-        return Step(NO_ALARMS, CellState(state.scored, pool), 0, late)
+        return Step(NO_ALARMS, CellState(state.scored, pool, seen), 0, late)
     fresh = pool.head(n)
     frame = new_features(state.scored, fresh, scorer.spec)
-    hits = detectors.alarms(scorer.detector.score(frame), scorer.threshold, scorer.alarm)
     rows = pl.concat([state.scored, fresh])
-    newest = fresh.select(_local_date.max()).item()
-    keep = rows.filter(_local_date >= newest - timedelta(days=history_days(scorer.spec.config)))
-    alarms_ = _with_alarm_ids(hits, run, scorer.detector_version)
-    return Step(alarms_, CellState(keep, pool.slice(n)), frame.height, late)
+    day = fresh.select(_local_date.max()).item()
+    keep = rows.filter(_local_date >= day - timedelta(days=history_days(scorer.spec.config)))
+    state_ = CellState(keep, pool.slice(n), seen)
+    return Step(scorer.alarms(frame, run), state_, frame.height, late)

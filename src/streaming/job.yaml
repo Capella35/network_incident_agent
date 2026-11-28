@@ -13,10 +13,6 @@ driver_memory: 512m
 # land in one huge batch.
 max_offsets_per_trigger: 20736
 trigger_seconds: 10
-# A cell's rows arrive out of order (one cell's intervals sit in different Kafka partitions):
-# a missing interval is waited for until the cell's newest row is this far past it, then given
-# up (scoring.step). One local day: a replay fills every hole within a few micro-batches.
-hold_intervals: 144
 # A (replay run, cell) that sends nothing for this long is dropped from the state (bounded state).
 state_timeout_minutes: 60
 # State-store versions kept in the checkpoint (Spark's default 100 keeps ~100 copies of the
