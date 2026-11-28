@@ -12,7 +12,7 @@ from common import kafka, telemetry
 from common.telemetry import TelemetryMessage
 from producer import sink
 from tests.factories import telemetry_message as msg
-from tests.fakes import FakeClock, FakeKafkaMessage
+from tests.fakes import FakeClock, FakeKafkaMessage, FakeProducer
 
 # --- fakes -----------------------------------------------------------------------------------
 
@@ -62,25 +62,11 @@ class FakeWriter:
         return failed
 
 
-@dataclass
-class FakeDlq:
-    events: Events
-    unacked: int = 0
-    sent: list[tuple[str, bytes, bytes]] = field(default_factory=list)
-
-    def produce(self, topic: str, *, value: bytes, key: bytes) -> None:
-        self.sent.append((topic, key, value))
-
-    def flush(self, timeout: float) -> int:
-        self.events.log.append("dlq-flush")
-        return self.unacked
-
-
 def wiring(
     batches: list[list[FakeKafkaMessage]], **writer: Any
-) -> tuple[Events, FakeConsumer, FakeWriter, FakeDlq]:
+) -> tuple[Events, FakeConsumer, FakeWriter, FakeProducer]:
     ev = Events()
-    return ev, FakeConsumer(ev, batches), FakeWriter(ev, **writer), FakeDlq(ev)
+    return ev, FakeConsumer(ev, batches), FakeWriter(ev, **writer), FakeProducer(ev.log, name="dlq")
 
 
 def quick(idle_exit: float | None = None) -> sink.LoopSettings:

@@ -32,7 +32,7 @@ from psycopg import sql
 from pydantic import ValidationError
 
 from common import kafka, telemetry
-from common.db import DbConfigError, DbSettings, Role
+from common.db import DbConfigError, DbSettings, Role, insert_into
 from common.telemetry import TelemetryMessage
 
 log = logging.getLogger("producer.sink")
@@ -65,11 +65,6 @@ class Consumer(Protocol):
     def consume(self, num_messages: int, timeout: float) -> Sequence[Message]: ...
     def commit(self, *, asynchronous: Literal[False]) -> object: ...
     def close(self) -> None: ...
-
-
-class DlqProducer(Protocol):
-    def produce(self, topic: str, *, value: bytes, key: bytes) -> None: ...
-    def flush(self, timeout: float) -> int: ...
 
 
 class Writer(Protocol):
@@ -129,22 +124,14 @@ def parse(msg: Message) -> TelemetryMessage | DeadLetter:
 
 def upsert_statement() -> sql.Composed:
     """INSERT ... ON CONFLICT (pk) DO UPDATE: re-delivered messages overwrite, never duplicate."""
-    cols = sql.SQL(", ").join(map(sql.Identifier, COLUMNS))
     updates = sql.SQL(", ").join(
         sql.SQL("{c} = EXCLUDED.{c}").format(c=sql.Identifier(c))
         for c in COLUMNS
         if c not in PRIMARY_KEY
     )
-    return sql.SQL(
-        "INSERT INTO {table} ({cols}) VALUES ({vals}) "
-        "ON CONFLICT ({pk}) DO UPDATE SET {updates}, ingested_at = now()"
-    ).format(
-        table=sql.Identifier(TABLE),
-        cols=cols,
-        vals=sql.SQL(", ").join(sql.Placeholder() * len(COLUMNS)),
-        pk=sql.SQL(", ").join(map(sql.Identifier, PRIMARY_KEY)),
-        updates=updates,
-    )
+    return insert_into(TABLE, COLUMNS) + sql.SQL(
+        " ON CONFLICT ({pk}) DO UPDATE SET {updates}, ingested_at = now()"
+    ).format(pk=sql.SQL(", ").join(map(sql.Identifier, PRIMARY_KEY)), updates=updates)
 
 
 def _params(m: TelemetryMessage) -> tuple[Any, ...]:
@@ -192,7 +179,7 @@ class Summary:
 def process_batch(
     batch: Sequence[Message],
     writer: Writer,
-    dlq: DlqProducer,
+    dlq: kafka.Producer,
     consumer: Consumer,
     summary: Summary,
     *,
@@ -250,7 +237,7 @@ def count_rows(conn: psycopg.Connection[Any], replay_run_id: str) -> int:
 def run(
     consumer: Consumer,
     writer: Writer,
-    dlq: DlqProducer,
+    dlq: kafka.Producer,
     settings: LoopSettings = DEFAULT_LOOP,
     *,
     stop: Callable[[], bool] = lambda: False,

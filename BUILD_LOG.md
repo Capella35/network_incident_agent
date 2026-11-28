@@ -20,6 +20,33 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-27 — Milestone 2, step 8: Spark detector job
+
+**What was built:**
+- **Kafka restart loop fixed first** (seen 2026-11-26 and 2026-11-27): `replication-offset-checkpoint` in the Kafka volume was 1,374 NUL bytes (a torn write, file dated 2026-11-25 00:07, likely an unclean Docker Desktop stop); the broker marked its only log dir failed and exited. Moved the file out of the volume (copy kept in the session scratchpad); Kafka rebuilt it, topic data intact; `make test-integration` 25 passed, 0 restarts. Prevention: `make down` before quitting Docker Desktop.
+- `src/common/alarms.py`: `AlarmMessage` (validated like telemetry, shared `telemetry.check_*` validators), `alarm_id` = `ALM-<uuid5(run, cell, interval, detector version)>`, topic `alarms`.
+- `src/streaming/scoring.py` (no Spark): per (run, cell) `CellState` = scored raw rows of `level.days` + 1 local days + rows waiting; `step` releases the gap-free run (reordering buffer; a run starts at the local midnight of its first day; `hold` 1 day), computes each local day with `features.compute` on its own history, scores with the champion, `detectors.alarms`.
+- `src/streaming/job.py` + `job.yaml`: Kafka source (rows invalid for the message schema dropped; `failOnDataLoss` off), `applyInPandasWithState`, `foreachBatch` sink: Kafka (delivery-checked) then Postgres `alarms` + `detector_heartbeats` in one transaction; champion loaded once by version (`tracking.load_champion`, moved there with `champion()` so the job never imports `models.promote` → `evaluation`); checkpoint pinned to the detector version.
+- Infra: `infra/spark/Dockerfile` (Python 3.11.17, Temurin JRE 17, PySpark 4.2.1 from `uv.lock`, 4 Kafka jars by SHA-256, non-root; 2.15 GB after moving uv's cache to a build mount, was 4.8 GB), `.dockerignore` allowlist (no env file, no `data/`), Compose `detector` under profile `spark` (1.5 GiB, `restart: on-failure:3`, Spark UI on 127.0.0.1:4040), `alarms` topic (7 days, 64 MiB/partition), `infra/db/003_alarms.sql`, `make detect` / `detect-stop` / `detect-reset`, `make spark-smoke` now in the detector image, `make down` includes the profile.
+- Shared: `common.kafka.Producer` (with delivery callback), `common.db.insert_into`, `telemetry.local_day_start`; tests: `FakeProducer`, `alarm_message`, `noisy_rows`, `zscore_scorer`, `DB_DIR` in `tests/factories.py` / `tests/fakes.py`; import-boundary test: the job reaches neither `evaluation` nor `producer` (Rule 6).
+
+**Tests run and results:**
+- `make check`: 510 passed, coverage 92.07%. `make test-integration`: 26 passed (new: `PgStore` stores once with its heartbeat).
+- Unit: streamed features = per-day offline frames bitwise, = one all-history frame within 1e-12; shuffled + repeated arrival = in-order result (features and alarms exact); holes, hold, late rows, timeouts, version pin, Kafka delivery failures, schema-vs-table columns.
+- **Done when, on the stack (final code):** topic of 435,457 messages (20 replayed days incl. one day re-sent under the same run ID + 1 live injected day + 1 planted off-grid message) → 414,720 rows scored = every distinct (run, cell, interval), 20,643 late = only re-sent copies, 0 waiting, the bad message dropped silently. SIGKILL during batch 9; restart re-ran batch 9 from the checkpoint. **1,448 alarms, each once in Postgres; Kafka: exactly 1,448 new messages, 1,448 distinct keys, the same IDs.** Alarm counts = offline scoring of the same runs (701 on 2013-12-02, 747 on 2013-12-03); 2013-12-02: same 701 IDs and KPIs, 290 scores bitwise equal, the rest within 8.9e-15. Memory: peak 1.47 GiB incl. page cache, 1.22 GiB anonymous, limit 1.5 GiB never reached, 0 OOM kills. Mismatched checkpoint version: exit 1, 3 restarts, stopped with the reset hint.
+- Measured on the way (each changed the design): `local[2]` = 1.49 GiB anonymous, limit hit 774 times → `local[1]`; scoring rows behind the latest lost 6% of the backlog (cell spread over partitions) → reordering buffer; starting a cell at its first-arrived row lost ~280 rows → start at local midnight; 7 history days → the first hour of each day differed by up to 0.40 from an all-history frame → 8 days.
+- Reviewed: `/simplify` (4 reviewers: shared SQL prefix, one timestamp conversion each way, one local-midnight helper, per-cell seasonal slice, simpler `step`, test helpers; skipped with reasons: splitting `features.compute` to reuse a day's level offsets, shipping the scorer once per worker, re-keying the topic, frame-start-independent level sums). `/code-review` medium: 4 important (Kafka delivery errors unchecked; one bad message could block a batch for good; `failOnDataLoss`; a promotion between a crash and the restart re-raising alarms under new IDs) + 4 nits (restart loop, rows dropped at timeout uncounted, shutdown log text, pandas 3 with PySpark 4.2.1), all fixed or recorded.
+
+**Decisions made:** (also in DECISIONS.md) raw-row state + per-day frames + 8 history days; reordering buffer under the M1 key; Kafka-first, Postgres once, version-pinned checkpoint; `local[1]`; Temurin JRE image; pandas 3 kept after the end-to-end check.
+
+**Open items:**
+- **Step 9 score tolerance** (user decision, `DECISIONS.md` Open): alarm IDs match offline, scores differ by ≤ 9e-15 across platforms and matrix shapes.
+- **Re-key `telemetry.raw` by cell?** (user decision): would remove the reordering buffer; changes an M1 contract.
+- The offline single-day path (`features_for` with exactly `level.days` of history) gives the day's first hour slightly different window features from multi-day frames (the previous day's level has 6 days); the stream uses 8 days. Matters for Step 9's rule ("7 history days").
+- CPU: each micro-batch recomputes 8 days of features per cell (est. 10–20% of a core at real-time pace); splitting `features.compute` so a day's level offsets are computed once is the fix if heartbeats show lag.
+- No-data micro-batches every 10 s while state has timeouts pending write a heartbeat each (fine for Step 10's alert; ~360 rows/hour until the state times out).
+- `telemetry_raw` / Kafka hold one day replayed twice under run ID `step7-check-2013-11-04` (the sink's upsert hid it).
+
 ## 2026-11-27 — Milestone 2, step 7: promotion gate + first champion
 
 **What was built:**

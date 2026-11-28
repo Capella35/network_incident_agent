@@ -7,11 +7,12 @@ kept out of `repr()` so it never lands in a log line or an error message.
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 
 import psycopg
+from psycopg import sql
 
 
 class Role(StrEnum):
@@ -66,3 +67,13 @@ class DbSettings:
             connect_timeout=5,
             application_name="network-incident-agent",
         )
+
+
+def insert_into(table: str, columns: Sequence[str]) -> sql.Composed:
+    """`INSERT INTO table (columns) VALUES (%s, ...)`, identifiers quoted; callers append their
+    ON CONFLICT clause."""
+    return sql.SQL("INSERT INTO {} ({}) VALUES ({})").format(
+        sql.Identifier(table),
+        sql.SQL(", ").join(map(sql.Identifier, columns)),
+        sql.SQL(", ").join(sql.Placeholder() * len(columns)),
+    )

@@ -11,7 +11,7 @@ The project lives in `~/Projects/network_incident_agent` (moved 2026-11-14). Kee
 Milan traffic replay + fault injector → **Kafka** (`telemetry.raw`) → **Spark Structured Streaming** (windowed features + promoted detector) → Kafka `alarms` → **correlator** (topology rules + graph ranking) → incident + root node → **XGBoost** classifier → **PostgreSQL** → **Grafana** (KPIs, health), **Streamlit** console (human approve/correct/close), **ops agent** (Groq API, read-only tools). **MLflow** tracks every model run, holds the registry, and runs the promotion gate. Everything starts with `docker compose up`. Full diagram and component table: `specs/00-overview.md`.
 
 ## Status and commands
-Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `specs/milestones/milestone-2.md`; Steps 1–7 done). Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
+Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `specs/milestones/milestone-2.md`; Steps 1–8 done). Python 3.11, managed with `uv`; exact versions pinned in `uv.lock` (never edit it by hand; use `uv add`).
 
 | Task | Command |
 |---|---|
@@ -38,7 +38,9 @@ Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `spe
 | Load the synthetic topology into Postgres | `make db-topology` |
 | Apply schema changes after `001_init.sql` to the running database (idempotent) | `make db-migrate` |
 | Integration tests against the running stack (not in CI) | `make test-integration` |
-| One-off Spark smoke job (Spark profile) | `make spark-smoke` |
+| One-off Spark smoke job in the detector image | `make spark-smoke` |
+| Start / stop the Spark detector job on `detector@champion` (Spark profile; Kafka `telemetry.raw` → alarms to Kafka `alarms` + Postgres; stack running) | `make detect` / `make detect-stop` |
+| Remove the detector job and its checkpoint (needed after a promotion: the checkpoint is pinned to the detector version) | `make detect-reset` |
 | Replay processed days into Kafka `telemetry.raw` (stack running); `--inject` adds the days' split's SYNTHETIC faults and logs their change events | `make replay ARGS="--start 2013-11-04 [--end …] [--speed 0] [--run-id …] [--inject]"` |
 | Kafka `telemetry.raw` → Postgres `telemetry_raw` (runs until Ctrl-C) | `make sink` (`ARGS="--idle-exit 10"` to stop when drained) |
 | Regenerate Grafana dashboards from `kpis.yaml` (never edit the JSON by hand) | `make dashboards` |
@@ -46,7 +48,7 @@ Milestone 1 done (2026-11-19 → 2026-11-22); Milestone 2 in progress (plan `spe
 
 Host ports, all on `127.0.0.1`: Postgres 5433 (5432 is often taken by a local Postgres), MLflow 5001, Grafana 3000 (user `admin`), Kafka 9092.
 
-Planned, not built yet: Milestone 2 Steps 8–11 (the Spark detector job, `make detect-check`) and everything after. Don't claim it works until it exists.
+Planned, not built yet: Milestone 2 Steps 9–11 (`make detect-check`, the dead-detector alert, `make clean` for checkpoints) and everything after. Don't claim it works until it exists.
 
 **Laptop limit:** 8 GB RAM total. Keep containers memory-capped; Spark runs only under its Compose profile.
 
@@ -58,7 +60,7 @@ Planned, not built yet: Milestone 2 Steps 8–11 (the Spark detector job, `make 
 - Anything that fits or tunes on data must go through `common.splits` (`splits.require(day, Split.TRAIN)` or `VALIDATION`); never read test days outside the final evaluation.
 
 ## Code quality (no AI slop)
-- **Search before you write.** Reuse what exists: `common.kafka` (Kafka settings), `common.db` (Postgres roles), `common.telemetry` (message schema, `INTERVAL`, `LOCAL_TZ`, `add_real_kpis`), `producer.data_prep.processed_days` (a split's processed days), `producer.replay.telemetry_for` (telemetry for a day range, optionally fault-injected: the one path for replay and offline code), `producer.topology.Index` (topology lookups), `tests/factories.py` (test messages; `telemetry_frame` for `telemetry_for`-shaped rows), `streaming.features` (detection features; imports only `common`), `streaming.offline.features_for` (features for consecutive days with their history: the one offline path), `models.detectors` (candidates, `alarms`), `models.tracking.start_run` (MLflow run by experiment ID), `models.tracking.code_version`, `models.cli.RUN_ERRORS` (CLI one-line errors), `common.process.check_budget` (memory budget, R1), `data_prep.snapshot` (data ID for a run), `detectors.training_rows`, `evaluation.report.gaps`, `evaluation.report.score` (alarms → detection metrics; the only way to score against the ground truth), `milan.window` (UTC span of local days), `common.domain.loader.read_config` (versioned YAML config → model), `tests/fakes.py` (fake Kafka message, fake clock), `tests/integration/conftest.py` (throwaway topics, producer, writer connection, read-back). Never copy a block into a second file; move it to `common/` or a shared test helper instead.
+- **Search before you write.** Reuse what exists: `common.kafka` (Kafka settings, `Producer` protocol), `common.db` (Postgres roles, `insert_into`), `common.alarms` (alarm message, `alarm_id`), `common.telemetry` (message schema, `INTERVAL`, `LOCAL_TZ`, `local_day_start`, `add_real_kpis`), `producer.data_prep.processed_days` (a split's processed days), `producer.replay.telemetry_for` (telemetry for a day range, optionally fault-injected: the one path for replay and offline code), `producer.topology.Index` (topology lookups), `tests/factories.py` (test messages and alarms; `telemetry_frame` for `telemetry_for`-shaped rows, `noisy_rows`, `zscore_scorer`, `DB_DIR`), `streaming.features` (detection features; imports only `common`), `streaming.offline.features_for` (features for consecutive days with their history: the one offline path), `streaming.scoring` (per-cell streaming state and scoring, no Spark), `models.tracking.load_champion`, `models.detectors` (candidates, `alarms`), `models.tracking.start_run` (MLflow run by experiment ID), `models.tracking.code_version`, `models.cli.RUN_ERRORS` (CLI one-line errors), `common.process.check_budget` (memory budget, R1), `data_prep.snapshot` (data ID for a run), `detectors.training_rows`, `evaluation.report.gaps`, `evaluation.report.score` (alarms → detection metrics; the only way to score against the ground truth), `milan.window` (UTC span of local days), `common.domain.loader.read_config` (versioned YAML config → model), `tests/fakes.py` (fake Kafka message and producer, fake clock), `tests/integration/conftest.py` (throwaway topics, producer, writer connection, read-back). Never copy a block into a second file; move it to `common/` or a shared test helper instead.
 - **Smallest change that meets the step's "Done when".** No speculative options, layers, or abstractions for later milestones; add them when a step needs them.
 - **No dead code:** no commented-out code, unused parameters, `if False`, or leftover debug output.
 - **Comments say why, not what.** Docstrings state the contract (inputs, outputs, what is SYNTHETIC/MODELED); the code says the rest.

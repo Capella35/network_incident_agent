@@ -212,3 +212,12 @@ def test_logged_model_code_imports_only_what_the_model_ships() -> None:
         if m.split(".")[0] in repo and not m.startswith(shipped)
     }
     assert outside == set()
+
+
+def test_detector_job_reaches_neither_ground_truth_nor_injector() -> None:
+    """Alarms come only from detector output (Rule 6): the Spark job and what it imports never
+    reach `evaluation` (the ground truth) or `producer` (the injector)."""
+    graph = {module_name(p, SRC): imported_modules(p, SRC) for p in sorted(SRC.rglob("*.py"))}
+    reached = reachable("streaming.job", graph)
+    assert "streaming.scoring" in reached
+    assert {m for m in reached if m.startswith(("evaluation", "producer"))} == set()

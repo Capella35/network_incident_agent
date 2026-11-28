@@ -1,7 +1,7 @@
 # Local stack for Network Incident Agent (milestone 1, step 6).
 #
 #   make up            # = docker compose --env-file .env -f infra/docker-compose.yml up -d --wait
-#   make spark-smoke   # Spark is off by default; runs only under the `spark` profile
+#   make detect        # the Spark detector job: off by default, only under the `spark` profile
 #
 # Guardrails (specs/08-guardrails.md):
 #   S1  every published port is bound to 127.0.0.1
@@ -12,7 +12,7 @@
 #   R2  Kafka topics have bounded retention (see kafka/create-topics.sh)
 #
 # Memory budget (default stack): kafka 1 GiB + postgres 512 MiB + mlflow 768 MiB
-# + grafana 640 MiB = ~2.9 GiB. Spark (profile) adds 1.5 GiB (~4.4 GiB of Docker's ~5.3 GiB).
+# + grafana 640 MiB = ~2.9 GiB. The detector (Spark, profile) adds 1.5 GiB (~4.4 GiB of ~5.3 GiB).
 #
 # Host ports come from .env: POSTGRES_PORT (5433), MLFLOW_PORT (5001), GRAFANA_PORT (3000).
 # Inside the Compose network the services keep their standard ports (postgres:5432, mlflow:5000).
@@ -209,27 +209,48 @@ services:
       resources:
         limits: { memory: 640m }
 
-  # Off by default. Milestone 1 only smoke-checks it (make spark-smoke).
-  spark:
-    image: apache/spark:4.2.1-python3
+  # The Spark detector job (milestone 2, step 8; src/streaming/job.py). Off by default: only
+  # under the `spark` profile (make detect / make spark-smoke). Built from infra/spark/Dockerfile.
+  detector:
+    <<: *base
+    # A crash restarts it from its checkpoint; a job that cannot start (no champion, a checkpoint
+    # of another detector version) exits 1 and must not loop.
+    restart: on-failure:3
+    build:
+      context: ..
+      dockerfile: infra/spark/Dockerfile
+    image: netops-detector:m2-step8
     profiles: ["spark"]
-    security_opt: ["no-new-privileges:true"]
     depends_on:
-      kafka:
+      kafka-init:
+        condition: service_completed_successfully
+      postgres:
         condition: service_healthy
-    command:
-      - /opt/spark/bin/spark-submit
-      - --master=local[2]
-      - --driver-memory=1g
-      - /opt/spark/examples/src/main/python/pi.py
-      - "10"
+      mlflow:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-netops}
+      PIPELINE_WRITER_PASSWORD: ${PIPELINE_WRITER_PASSWORD:?set PIPELINE_WRITER_PASSWORD in .env}
+      # One thread per pool in each Python worker: the cores are Spark's (local[2]), and every
+      # BLAS / polars thread pool costs memory inside the 1.5 GiB limit.
+      POLARS_MAX_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
     ports:
-      - "127.0.0.1:4040:4040"
+      - "127.0.0.1:4040:4040"  # Spark UI
+    volumes:
+      - spark-checkpoints:/checkpoints
     deploy:
       resources:
         limits: { memory: 1536m }
 
 volumes:
+  spark-checkpoints:
   kafka-data:
   postgres-data:
   mlflow-data:

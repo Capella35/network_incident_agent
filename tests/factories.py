@@ -4,12 +4,16 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
+import numpy as np
 import polars as pl
 
-from common import telemetry
+from common import alarms, telemetry
+from common.alarms import AlarmMessage
 from common.telemetry import TelemetryMessage
-from streaming import features
+from models import detectors
+from streaming import features, scoring
 
 T0 = datetime(2013, 11, 5, tzinfo=UTC)  # a training day, on the 10-minute grid
 
@@ -87,3 +91,52 @@ def flat_baseline(cells: Iterable[str], mean: float = 1.0, std: float = 0.5) -> 
     )
     curve = pl.DataFrame({"upper": [float("inf")], "mean": [mean], "std": [std]})
     return features.Reference(seasonal, curve)
+
+
+def noisy_rows(n_intervals: int, *, gaps: tuple[int, ...] = ()) -> pl.DataFrame:
+    """`telemetry_frame` with seeded multiplicative noise on traffic and load, so z-scores,
+    windows, and level offsets all move; moved to start at a local midnight (Europe/Rome,
+    2013-11-05), like a replay."""
+    rows = telemetry_frame(1, n_intervals, gaps=gaps)
+    noise = np.random.default_rng(3).lognormal(0.0, 0.4, rows.height)
+    noisy = ("sms_in", "internet", "call_in", "load_ratio")
+    to_midnight = telemetry.local_day_start(T0) - T0
+    return rows.with_columns(
+        *[(pl.col(c) * pl.lit(noise)).alias(c) for c in noisy],
+        pl.col("interval_start") + to_midnight,
+    )
+
+
+def zscore_scorer(threshold: float = 3.0) -> scoring.Scorer:
+    """A streaming scorer with the z-score detector (nothing to fit) against `flat_baseline`
+    for `CELL-1-1`."""
+    dcfg = detectors.load_config()
+    spec = features.Spec(features.load_config(), flat_baseline(["CELL-1-1"]))
+    return scoring.Scorer(
+        detectors.build("zscore", dcfg), threshold, dcfg.alarm, spec, "detector/7"
+    )
+
+
+REPO = Path(__file__).resolve().parents[1]
+DB_DIR = REPO / "infra" / "db"  # schema files (001_init.sql, migrations)
+
+
+ALARM_AT = datetime(2013, 12, 2, 8, 30, tzinfo=UTC)  # a validation-day interval
+
+
+def alarm_message(
+    *, run: str = "run-1", at: datetime = ALARM_AT, score: float = 3.25, **update: object
+) -> AlarmMessage:
+    """A valid alarm on `CELL-1-1` raised by `detector/1`, its ID derived from `run` and `at`;
+    `update` replaces any other field as given."""
+    fields: dict[str, object] = {
+        "alarm_id": alarms.alarm_id(run, "CELL-1-1", at, "detector/1"),
+        "replay_run_id": run,
+        "cell_id": "CELL-1-1",
+        "site_id": "SITE-1",
+        "interval_start": at,
+        "score": score,
+        "kpis": ("traffic_internet", "load_ratio"),
+        "detector_version": "detector/1",
+    }
+    return AlarmMessage.model_validate(fields | update)
