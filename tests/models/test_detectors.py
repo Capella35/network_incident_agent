@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 import polars as pl
 import pytest
 from polars.testing import assert_frame_equal
+from threadpoolctl import threadpool_info, threadpool_limits
 
 from models import detectors as det
 from streaming import features
@@ -108,3 +109,25 @@ def test_training_rows_sample_once_then_stay_put(train: pl.DataFrame) -> None:
     once = det.training_rows(train, 500, seed=1)
     assert once.height == 500 and not once["data_gap"].any()
     assert_frame_equal(det.training_rows(once, 500, seed=1), once)  # fit can resample: no-op
+
+
+OPENBLAS = any(i.get("internal_api") == "openblas" for i in threadpool_info())
+
+
+@pytest.mark.skipif(
+    not OPENBLAS,
+    reason="numpy's BLAS here is not OpenBLAS (macOS: Accelerate, not shape-stable); the "
+    "detector image and CI use OpenBLAS",
+)
+def test_autoencoder_scores_a_row_the_same_in_any_batch(train: pl.DataFrame) -> None:
+    """The Spark job scores what each micro-batch releases (often a few rows per cell); a row's
+    score must not depend on that (`SCORE_BLOCK`). One BLAS thread, as in the detector image."""
+    model = det.build("autoencoder", CFG).fit(train)
+    rows = train.head(300)
+    with threadpool_limits(limits=1):
+        whole = model.score(rows)
+        sizes = [1, 2, 3, 5, 8, 13, 21, 39, 129, 79]  # incl. one over a block, odd
+        starts = [sum(sizes[:i]) for i in range(len(sizes))]
+        parts = pl.concat(model.score(rows.slice(s, k)) for s, k in zip(starts, sizes, strict=True))
+    assert parts.height == whole.height
+    assert_frame_equal(parts, whole, check_exact=True)

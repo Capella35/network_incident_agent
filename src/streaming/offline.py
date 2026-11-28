@@ -41,22 +41,33 @@ class WithHistory:
     n_faults: int
 
 
+def history_days(data_dir: Path, first: date, cfg: features.Config | None = None) -> list[date]:
+    """The processed days among the `level.days` (of `cfg`, default `features.yaml`) before
+    `first`, in date order: the history `telemetry_with_history` loads."""
+    paths = data_prep.Paths(data_dir)
+    level = (cfg or features.load_config()).level.days
+    return [
+        d for i in range(level, 0, -1) if paths.traffic_day(d := first - timedelta(days=i)).exists()
+    ]
+
+
+def split_history(history: list[date], split: splits.Split | None) -> tuple[list[date], list[date]]:
+    """(history days of an earlier split: loaded clean, those of `split`: loaded injected like
+    the days themselves). Date order, so the first list is a prefix."""
+    earlier = [d for d in history if splits.split_of(d) is not split]
+    return earlier, history[len(earlier) :]
+
+
 def telemetry_with_history(
     data_dir: Path, days: list[date], *, inject: bool = False
 ) -> WithHistory:
     """Telemetry for `days` plus up to `level.days` processed days before them, injected as
     described in the module docstring. Same contract and errors as `features_for`."""
     _require_consecutive(days)
-    cfg = features.load_config()
     split = splits.split_of(days[0])
-    paths = data_prep.Paths(data_dir)
-    history = [
-        d
-        for i in range(cfg.level.days, 0, -1)
-        if paths.traffic_day(d := days[0] - timedelta(days=i)).exists()
-    ]
-    earlier = [d for d in history if splits.split_of(d) is not split]  # a prefix: date order
-    loaded = replay.telemetry_for(data_dir, [*history[len(earlier) :], *days], inject=inject)
+    history = history_days(data_dir, days[0])
+    earlier, same = split_history(history, split)
+    loaded = replay.telemetry_for(data_dir, [*same, *days], inject=inject)
     parts = [replay.telemetry_for(data_dir, earlier).rows] if earlier else []
     return WithHistory(pl.concat([*parts, loaded.rows]), tuple(history), loaded.n_faults)
 
@@ -72,7 +83,13 @@ def features_for(data_dir: Path, days: list[date], *, inject: bool = False) -> O
     )
 
 
-def features_of(rows: pl.DataFrame, days: list[date], ref: features.Reference) -> pl.DataFrame:
-    """Features of `rows` (`telemetry_with_history(...).rows`), only `days` kept."""
-    frame = features.compute(rows, ref, features.load_config())
+def features_of(
+    rows: pl.DataFrame,
+    days: list[date],
+    ref: features.Reference,
+    cfg: features.Config | None = None,
+) -> pl.DataFrame:
+    """Features of `rows` (`telemetry_with_history(...).rows`), only `days` kept; `cfg` the
+    feature config (default `features.yaml`; a packaged detector brings its own)."""
+    frame = features.compute(rows, ref, cfg or features.load_config())
     return frame.filter(features.LOCAL_TIME.dt.date().is_in(days))

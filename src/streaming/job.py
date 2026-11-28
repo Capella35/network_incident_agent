@@ -31,7 +31,7 @@ import sys
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import asdict, astuple, dataclass, fields
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import cache
 from importlib.resources import files
 from pathlib import Path
@@ -82,11 +82,6 @@ class Config(FrozenModel):
     trigger_seconds: PositiveInt
     state_timeout_minutes: PositiveInt
     min_batches_to_retain: PositiveInt
-    hold_intervals: PositiveInt  # `scoring.step`'s `hold`, in intervals
-
-    @property
-    def hold(self) -> timedelta:
-        return telemetry.INTERVAL * self.hold_intervals
 
 
 @cache
@@ -128,7 +123,9 @@ PROGRESS: dict[str, pl.DataType] = {
 }
 OUTPUT = {**dict(scoring.NO_ALARMS.schema), **PROGRESS}
 OUTPUT_SCHEMA = _struct(OUTPUT)
-STATE_SCHEMA = StructType([StructField("cell", BinaryType())])  # `scoring.CellState.encode`
+STATE_SCHEMA = StructType(  # `scoring.CellState.encode`: the rows, the partitions' progress
+    [StructField("rows", BinaryType()), StructField("seen", StringType())]
+)
 
 
 # --- The stateful step (runs in the Python workers) -------------------------------------------
@@ -164,25 +161,27 @@ def step_output(result: scoring.Step) -> pl.DataFrame:
 Update = Callable[[tuple[Any, ...], Iterator[pd.DataFrame], GroupState], Iterator[pd.DataFrame]]
 
 
-def make_update(scorer: scoring.Scorer, cfg: Config) -> Update:
-    """The `applyInPandasWithState` function: key = (replay run, cell)."""
+def make_update(scorer: scoring.Scorer, cfg: Config, partitions: int) -> Update:
+    """The `applyInPandasWithState` function: key = (replay run, cell); `partitions`: how many
+    `telemetry.raw` has."""
     timeout_ms = cfg.state_timeout_minutes * 60_000
-    hold = cfg.hold
 
     def update(
         key: tuple[Any, ...], batches: Iterator[pd.DataFrame], state: GroupState
     ) -> Iterator[pd.DataFrame]:
-        if state.hasTimedOut:  # the run went quiet: drop its rows (bounded state)
-            held = scoring.CellState.decode(state.get[0])
-            state.remove()  # rows still waiting are never scored: counted as late
-            yield to_spark(
-                step_output(scoring.Step(scoring.NO_ALARMS, held, 0, held.pending.height))
+        if state.hasTimedOut:  # the run went quiet: score what still waits, drop the state
+            held = scoring.CellState.decode(*state.get)
+            none = pl.DataFrame(schema=scoring.SCHEMA)
+            result = scoring.step(
+                held, none, scorer, run=str(key[0]), partitions=partitions, quiet=True
             )
+            state.remove()
+            yield to_spark(step_output(result))
             return
-        held = scoring.CellState.decode(state.get[0]) if state.exists else scoring.CellState.empty()
+        held = scoring.CellState.decode(*state.get) if state.exists else scoring.CellState.empty()
         new = from_spark(pd.concat(list(batches), ignore_index=True), scoring.SCHEMA)
-        result = scoring.step(held, new, scorer, run=str(key[0]), hold=hold)
-        state.update((result.state.encode(),))
+        result = scoring.step(held, new, scorer, run=str(key[0]), partitions=partitions)
+        state.update(result.state.encode())
         state.setTimeoutDuration(timeout_ms)
         yield to_spark(step_output(result))
 
@@ -342,8 +341,10 @@ def telemetry_stream(spark: SparkSession, cfg: Config) -> DataFrame:
         .option("failOnDataLoss", "false")
         .load()
     )
-    parsed = raw.select(F.from_json(F.col("value").cast("string"), TELEMETRY_SCHEMA).alias("m"))
-    return parsed.select("m.*").where(valid_rows())
+    parsed = raw.select(
+        F.from_json(F.col("value").cast("string"), TELEMETRY_SCHEMA).alias("m"), "partition"
+    )
+    return parsed.select("m.*", "partition").where(valid_rows())
 
 
 def valid_rows() -> Column:
@@ -369,6 +370,17 @@ def pin_version(marker: Path, version: str) -> None:
     marker.write_text(version)
 
 
+def topic_end_offsets() -> dict[int, int]:
+    """`telemetry.raw`'s partitions and their end offsets."""
+    from confluent_kafka import Consumer
+
+    consumer = Consumer(kafka.consumer_config(kafka.bootstrap_servers(), "detector-metadata"))
+    try:
+        return kafka.end_offsets(consumer, telemetry.TOPIC_RAW)
+    finally:
+        consumer.close()
+
+
 def run(checkpoint: str) -> int:
     from confluent_kafka import Producer as KafkaProducer
     from mlflow import MlflowClient
@@ -382,16 +394,10 @@ def run(checkpoint: str) -> int:
     except (DbConfigError, ValueError) as exc:
         log.error("%s", exc)
         return 1
-    tuned = champion.package.tuned
-    scorer = scoring.Scorer(
-        tuned.detector,
-        tuned.threshold,
-        tuned.alarm,
-        champion.package.spec,
-        alarms.detector_version(tracking.MODEL, champion.version),
-    )
+    scorer = scoring.Scorer.of(champion, tracking.MODEL)
     try:
-        pin_version(Path(f"{checkpoint}.detector"), scorer.detector_version)
+        # The state layout is pinned too: Step 9 changed it (rows + per-partition progress).
+        pin_version(Path(f"{checkpoint}.detector"), f"{scorer.detector_version} state-2")
     except ValueError as exc:
         log.error("%s", exc)
         return 1
@@ -401,7 +407,7 @@ def run(checkpoint: str) -> int:
         telemetry_stream(spark, cfg)
         .groupBy(RUN, "cell_id")
         .applyInPandasWithState(
-            make_update(scorer, cfg),
+            make_update(scorer, cfg, len(topic_end_offsets())),
             OUTPUT_SCHEMA,
             STATE_SCHEMA,
             "append",

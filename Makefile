@@ -1,5 +1,5 @@
 .PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate train union diagnose separation promote rollback inject clean \
-	env-check up down ps logs spark-smoke detect detect-stop detect-reset db-migrate db-topology replay sink replay-check dashboards \
+	env-check up down ps logs spark-smoke detect detect-stop detect-check detect-reset db-migrate db-topology replay sink replay-check dashboards \
 	test-integration
 
 # Local stack. .env is read by Compose and sourced for Python; its values are never printed.
@@ -109,6 +109,9 @@ detect: env-check  ## Build the detector image and start the Spark job on the ch
 
 detect-stop: env-check  ## Stop the Spark detector job (its checkpoint is kept)
 	$(COMPOSE) --profile spark stop detector
+
+detect-check: env-check  ## Milestone 2 Definition of done: replay a validation day, streamed alarms == offline (ARGS="--day 2013-12-03"; make detect first)
+	$(COMPOSE) --profile spark run --rm --build detect-check $(ARGS)
 
 detect-reset: env-check  ## Remove the detector job and its checkpoint (needed after a promotion); then make detect
 	$(COMPOSE) --profile spark rm --stop --force detector

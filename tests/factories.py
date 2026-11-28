@@ -93,10 +93,14 @@ def flat_baseline(cells: Iterable[str], mean: float = 1.0, std: float = 0.5) -> 
     return features.Reference(seasonal, curve)
 
 
+PARTITIONS = 6  # `telemetry.raw`'s (infra/kafka/create-topics.sh)
+
+
 def noisy_rows(n_intervals: int, *, gaps: tuple[int, ...] = ()) -> pl.DataFrame:
     """`telemetry_frame` with seeded multiplicative noise on traffic and load, so z-scores,
     windows, and level offsets all move; moved to start at a local midnight (Europe/Rome,
-    2013-11-05), like a replay."""
+    2013-11-05), like a replay; `partition`: the Kafka partition each row came from (interval
+    `i` in partition `i % PARTITIONS`, as the stream's input has it)."""
     rows = telemetry_frame(1, n_intervals, gaps=gaps)
     noise = np.random.default_rng(3).lognormal(0.0, 0.4, rows.height)
     noisy = ("sms_in", "internet", "call_in", "load_ratio")
@@ -104,6 +108,7 @@ def noisy_rows(n_intervals: int, *, gaps: tuple[int, ...] = ()) -> pl.DataFrame:
     return rows.with_columns(
         *[(pl.col(c) * pl.lit(noise)).alias(c) for c in noisy],
         pl.col("interval_start") + to_midnight,
+        (pl.int_range(pl.len()) % PARTITIONS).cast(pl.Int32).alias("partition"),
     )
 
 
@@ -140,3 +145,9 @@ def alarm_message(
         "detector_version": "detector/1",
     }
     return AlarmMessage.model_validate(fields | update)
+
+
+def alarm_frame(*messages: AlarmMessage) -> pl.DataFrame:
+    """Alarm messages as a frame of `streaming.scoring.NO_ALARMS` columns and types."""
+    rows = [m.model_dump(exclude={"schema_version"}) for m in messages]
+    return pl.DataFrame(rows, schema=scoring.NO_ALARMS.schema)

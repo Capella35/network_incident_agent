@@ -26,6 +26,9 @@ x-base: &base
     driver: json-file
     options: { max-size: "10m", max-file: "3" }
 
+# The detector image (infra/spark/Dockerfile): the job and its parity check must run the same one.
+x-detector-image: &detector-image netops-detector:m2-step9
+
 x-after-preflight: &after-preflight
   preflight:
     condition: service_completed_successfully
@@ -216,10 +219,10 @@ services:
     # A crash restarts it from its checkpoint; a job that cannot start (no champion, a checkpoint
     # of another detector version) exits 1 and must not loop.
     restart: on-failure:3
-    build:
+    build: &detector-build
       context: ..
       dockerfile: infra/spark/Dockerfile
-    image: netops-detector:m2-step8
+    image: *detector-image
     profiles: ["spark"]
     depends_on:
       kafka-init:
@@ -248,6 +251,43 @@ services:
     deploy:
       resources:
         limits: { memory: 1536m }
+
+  # Milestone 2 step 9 (make detect-check): the parity check, one-off, in the detector image, so
+  # the offline side runs the same code and libraries as the job. Reads data/ (read-only: the
+  # replay's processed days and, through src/evaluation only, the SYNTHETIC ground truth), the
+  # job's checkpoint (read-only: which offsets it has committed), and Postgres as `readonly`;
+  # sends the replay to Kafka. Needs `make detect` running.
+  detect-check:
+    build: *detector-build
+    image: *detector-image
+    profiles: ["spark"]
+    security_opt: ["no-new-privileges:true"]
+    restart: "no"
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      mlflow:
+        condition: service_healthy
+    entrypoint: ["python", "-m", "evaluation.detect_check"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+      MLFLOW_DISABLE_AGENT_HINT: "1"
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: ${POSTGRES_DB:-netops}
+      READONLY_PASSWORD: ${READONLY_PASSWORD:?set READONLY_PASSWORD in .env}
+      POLARS_MAX_THREADS: "1"  # the job's thread settings, so the offline side computes alike
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    volumes:
+      - ../data:/home/app/data:ro
+      - spark-checkpoints:/checkpoints:ro
+    deploy:
+      resources:
+        limits: { memory: 1g }
 
 volumes:
   spark-checkpoints:
