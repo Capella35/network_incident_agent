@@ -17,9 +17,11 @@ holds its KPI and column lists from fit time, so it scores the same after a conf
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from importlib.metadata import version
 from importlib.resources import files
+from pathlib import Path
 from typing import Any
 
 import mlflow
@@ -123,13 +125,39 @@ class Champion:
     version: str  # the registered version, so the alias moving later changes nothing loaded
 
 
-def load_champion(client: MlflowClient) -> Champion:
-    """The package the champion alias points to, loaded by version. Raises ValueError if there
-    is no champion yet, or (`load_package`) if it is not a package."""
+def load_champion(client: MlflowClient, *, cache: Path) -> Champion:
+    """The package the champion alias points to, loaded by version from its copy in `cache`
+    (`local_copy`), so a restart does not download it again (41 files; measured 2026-11-28: the
+    job's start to the champion loaded 71 s with the download, 34 s from the copy). Copies are
+    never deleted here: the job and the parity check share `cache` (`make clean` removes it).
+    Raises ValueError if there is no champion yet, or (`load_package`) if it is not a package;
+    OSError / MlflowException if the copy cannot be made."""
     current = champion(client)
     if current is None:
         raise ValueError(f"no {MODEL}@{ALIAS} yet: promote a candidate first (make promote)")
-    return Champion(load_package(f"models:/{MODEL}/{current.version}"), current.version)
+    # The run ID too: a version number can come back after its version is deleted.
+    target = cache / f"{current.version}-{current.run_id}"
+    copy = local_copy(f"models:/{MODEL}/{current.version}", target)
+    return Champion(load_package(str(copy)), current.version)
+
+
+def local_copy(model_uri: str, target: Path) -> Path:
+    """`target`, holding the files of `model_uri` (a registered version: they never change),
+    downloaded only if `target` does not exist yet. The download lands in a temporary folder
+    next to it and is renamed into place, so an interrupted one leaves no partial copy; if
+    another process put a copy there first, that one is kept."""
+    if target.exists():
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=target.parent, prefix=".download-") as tmp:
+        download = Path(tmp) / "model"
+        mlflow.artifacts.download_artifacts(artifact_uri=model_uri, dst_path=str(download))
+        try:
+            download.rename(target)
+        except OSError:
+            if not target.exists():
+                raise
+    return target
 
 
 def start_run(experiment: str, run_name: str, *, nested: bool = False) -> mlflow.ActiveRun:

@@ -149,11 +149,11 @@ clean:  ## Caches + logs; with the stack up also MLflow runs beyond retention an
 
 # A running detector keeps its checkpoint: removing it mid-run loses its state and forces a full
 # re-score (make detect-stop first, or make detect-reset).
-clean-stack: env-check  ## The stack part of make clean: checkpoint (detector stopped), MLflow runs beyond models/retention.yaml, mlflow gc
+clean-stack: env-check  ## The stack part of make clean: checkpoint + champion copies (detector stopped), MLflow runs beyond models/retention.yaml, mlflow gc
 	@if $(COMPOSE) --profile spark ps --status running --status restarting --status paused --status created \
 			--services 2>/dev/null | grep -qx detector; then \
 		echo "detector running: its checkpoint is kept (make detect-stop, then make clean)"; \
-	else $(MAKE) --no-print-directory detect-reset; fi
+	else $(MAKE) --no-print-directory detect-reset && docker volume rm --force netops_model-cache; fi
 	@$(LOAD_ENV) uv run python -m models.prune
 	@# the store URI is the mlflow service's --backend-store-uri (infra/docker-compose.yml)
 	$(COMPOSE) exec -T mlflow sh -c 'MLFLOW_TRACKING_URI=http://localhost:5000 mlflow gc --backend-store-uri sqlite:////mlflow/mlflow.db'

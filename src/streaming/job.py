@@ -14,10 +14,11 @@ in Postgres are left out before anything is sent, and the insert skips any that 
 therefore gets every alarm once. Kafka is at-least-once: a crash between the Kafka send and the
 Postgres commit sends that batch's alarms again, under the same keys (consumers dedupe by ID).
 
-The champion (`models:/detector@champion`) is loaded once at start, by version; a new promotion
-takes effect on restart. The replay validates every message before sending it; a message that
-does not parse here is skipped. Settings: `job.yaml`. Connections from the environment:
-KAFKA_BOOTSTRAP_SERVERS, MLFLOW_TRACKING_URI, POSTGRES_* and PIPELINE_WRITER_PASSWORD.
+The champion (`models:/detector@champion`) is loaded once at start, by version, from a local copy
+(`DEFAULT_MODEL_CACHE`; downloaded once per version); a new promotion takes effect on restart. The
+replay validates every message before sending it; a message that does not parse here is skipped.
+Settings: `job.yaml`. Connections from the environment: KAFKA_BOOTSTRAP_SERVERS,
+MLFLOW_TRACKING_URI, POSTGRES_* and PIPELINE_WRITER_PASSWORD.
 """
 
 from __future__ import annotations
@@ -69,6 +70,7 @@ from streaming import features, scoring
 log = logging.getLogger("streaming.job")
 
 DEFAULT_CHECKPOINT = "/checkpoints/detector"  # the detector image's checkpoint volume
+DEFAULT_MODEL_CACHE = "/models-cache"  # the detector image's volume of champion copies
 ALARMS = "alarms"  # Postgres tables (infra/db/003_alarms.sql)
 HEARTBEATS = "detector_heartbeats"
 FLUSH_TIMEOUT_S = 30.0
@@ -384,14 +386,15 @@ def topic_end_offsets() -> dict[int, int]:
 def run(checkpoint: str) -> int:
     from confluent_kafka import Producer as KafkaProducer
     from mlflow import MlflowClient
+    from mlflow.exceptions import MlflowException
 
     from models import tracking
 
     cfg = load_config()
     try:
         db = DbSettings.from_env(Role.PIPELINE_WRITER)
-        champion = tracking.load_champion(MlflowClient())
-    except (DbConfigError, ValueError) as exc:
+        champion = tracking.load_champion(MlflowClient(), cache=Path(DEFAULT_MODEL_CACHE))
+    except (DbConfigError, ValueError, OSError, MlflowException) as exc:
         log.error("%s", exc)
         return 1
     scorer = scoring.Scorer.of(champion, tracking.MODEL)

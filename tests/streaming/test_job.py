@@ -197,3 +197,18 @@ def test_alarm_and_heartbeat_fields_are_the_table_columns() -> None:
     assert list(scoring.NO_ALARMS.columns) == message
     assert table_columns("alarms") == [*message, "stored_at"]
     assert table_columns("detector_heartbeats") == [f.name for f in fields(job.Heartbeat)] + ["at"]
+
+
+@pytest.mark.parametrize("error", [OSError("read-only file system"), ValueError("no champion")])
+def test_a_champion_that_cannot_be_loaded_exits_1_with_one_line(
+    error: Exception, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from models import tracking
+
+    def fail(*_a: object, **_kw: object) -> None:
+        raise error
+
+    monkeypatch.setattr(job.DbSettings, "from_env", lambda _role: None)
+    monkeypatch.setattr(tracking, "load_champion", fail)
+    assert job.run("unused") == 1
+    assert str(error) in caplog.text

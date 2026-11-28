@@ -268,9 +268,17 @@ def main(argv: list[str] | None = None) -> int:
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
     try:
-        scorer = scoring.Scorer.of(tracking.load_champion(MlflowClient()), tracking.MODEL)
+        champion = tracking.load_champion(MlflowClient(), cache=Path(job.DEFAULT_MODEL_CACHE))
+        scorer = scoring.Scorer.of(champion, tracking.MODEL)
         r = run_check(args.data_dir, args.checkpoint, args.day, scorer, timeout_s=args.timeout)
-    except (CheckError, DbConfigError, psycopg.Error, KafkaException, *cli.RUN_ERRORS) as exc:
+    except (
+        CheckError,
+        DbConfigError,
+        psycopg.Error,
+        KafkaException,
+        OSError,
+        *cli.RUN_ERRORS,
+    ) as exc:
         log.error("%s", exc)
         return 1
     print(render(r), flush=True)  # the verdict first: a failed store must not hide it

@@ -20,6 +20,24 @@ One entry per working session, newest at the top. Copy the template below.
 -
 -->
 
+## 2026-11-28 — Milestone 2 (between steps 10 and 11): local champion copy
+
+**What was built:**
+- `models.tracking.local_copy` + `load_champion(client, *, cache=...)`: the champion package is loaded from a local copy keyed by `<version>-<run_id>` (the run ID because a version number can return after a delete). Download into a `.download-*` folder beside the target, then rename into place (an interrupted download leaves no copy that looks complete); if another process placed the copy first, that one is kept. The job and `make detect-check` share Compose volume `model-cache` (`/models-cache`, created in the image so it gets the app user as owner). `make clean` removes it with the checkpoint when the detector is stopped (R3).
+- Job start-up: a copy or download failure (`OSError`, `MlflowException`) is now a one-line error, exit 1 (it was a traceback); `detect-check` catches `OSError` too.
+
+**Tests run and results:**
+- `make check`: 539 passed + 1 skipped, 91.30% coverage. New tests: one download per version, a failed download leaves nothing, a copy another process finished first is kept, start-up errors exit 1.
+- Stack: first start with an empty volume 71 s from container start to champion loaded (41 files, 2.4 MB); restarts from the copy 34 s and 17 s, no download. The first start of a freshly built image took 121 s with no download (the stack was still busy from `make detect`), so treat start times as noisy. The remaining time before scoring is imports + registry lookup (not measured separately).
+- Reviewed: `/simplify` (4 reviewers: required `cache`, unused `--model-cache` flags dropped, tests simplified) + `/code-review` medium. Its findings 1, 2 + a nit were about the in-code cleanup of old copies that `/simplify` had suggested (it races across the shared volume, and a half-deleted copy would be trusted): reverted to `make clean`. Findings 3 + 4 (start-up errors) fixed. Findings 5–7 are in Step 9/10 code: recorded as open items.
+
+**Decisions made:**
+- Old copies are not pruned in code (shared volume); the cache grows 2.4 MB per promoted version until `make clean`.
+
+**Open items:**
+- From `/code-review`, pre-existing code: `scoring._lost_before` compares `len(seen) == partitions` with the count read at start (a topic that gains partitions, or reads 0, gives up holes only at the state timeout: use `>=` and refuse 0); the sink's final commit at shutdown is tried once and its `KafkaException` is uncaught in `main`; `detect-check` loads the current champion, not the version the job pinned (`<checkpoint>.detector`), so after a promotion without a restart it reports a mismatch with no cause.
+- Feature recompute per batch (8 days per cell): measure batch times before caching anything (the parity bar is exact).
+
 ## 2026-11-28 — Milestone 2, step 10: detector health, detection dashboards, `make clean`
 
 **What was built:**
