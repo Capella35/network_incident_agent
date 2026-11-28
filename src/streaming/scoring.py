@@ -241,7 +241,8 @@ def step(
         return Step(NO_ALARMS, CellState(state.scored, pool, seen), 0, late)
     else:  # nothing scored yet: wait for the run's first interval (a replay sends whole days)
         after = telemetry.local_day_start(pool["interval_start"][0]) - telemetry.INTERVAL
-    lost = pool.item(-1, "interval_start") + telemetry.INTERVAL if quiet else None
+    # Quiet with nothing waiting (the usual timeout) leaves the pool empty: nothing to give up.
+    lost = pool.item(-1, "interval_start") + telemetry.INTERVAL if quiet and pool.height else None
     n = releasable(pool, after, lost or _lost_before(seen, partitions))
     if n == 0:  # nothing released: a detector cannot score zero rows
         return Step(NO_ALARMS, CellState(state.scored, pool, seen), 0, late)

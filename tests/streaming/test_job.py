@@ -70,6 +70,10 @@ def test_update_keeps_state_across_batches_and_drops_it_on_timeout() -> None:
     assert more[more["alarm_id"].isna()][["n_scored", "n_late"]].to_numpy().tolist() == [[100, 50]]
     held = scoring.CellState.decode(*later.get)
     assert held.scored.height == 300
+    idle = spark_state(later.get, timed_out=True)  # the usual timeout: scored, nothing waiting
+    [out] = list(update(("run-1", "CELL-1-1"), iter([]), idle))
+    assert out[["n_scored", "n_late"]].to_numpy().tolist() == [[0, 0]]
+    assert not idle.exists
     waiting = spark_state()  # partition 0 never delivers (row 0 lost): rows wait at the timeout
     quiet = rows.slice(1, 9).filter(pl.col("partition") != 0)
     list(update(("run-1", "CELL-1-1"), iter([as_spark_input(quiet)]), waiting))
