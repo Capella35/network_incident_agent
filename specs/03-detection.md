@@ -1,6 +1,6 @@
 # 03 — Detection
 
-Turns `telemetry.raw` into per-cell **alarms**. Built in Milestone 2 (`milestones/milestone-2.md`). Drawn from `PROJECT.md` → What is being built (items 4–5) and `README.md` → Models; details still open are marked **(M2)** and are decided in the Milestone 2 plan.
+Turns `telemetry.raw` into per-cell **alarms**. Built in Milestone 2 (`milestones/milestone-2.md`). Drawn from `PROJECT.md` → What is being built (items 4–5) and `README.md` → Models; every detail once marked **(M2)** was decided in the Milestone 2 plan and is recorded below (none left open, 2026-11-28).
 
 ## Behavior
 - **Spark Structured Streaming job** (`src/streaming/`) reads `telemetry.raw`, computes windowed per-cell features, scores them with the **promoted** detector, and writes alarms to Kafka `alarms` and Postgres. Checkpointing gives exactly-once output.

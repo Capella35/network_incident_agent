@@ -133,6 +133,14 @@ class Spec:
     config: Config
     reference: Reference
 
+    def matches(self, other: Spec) -> bool:
+        """The same config and the same fitted reference (polars frames compare by value)."""
+        return (
+            self.config == other.config
+            and self.reference.seasonal.equals(other.reference.seasonal)
+            and self.reference.load_curve.equals(other.reference.load_curve)
+        )
+
 
 @cache
 def load_config() -> Config:

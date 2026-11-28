@@ -1,4 +1,4 @@
-.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate train union diagnose separation promote rollback inject clean clean-stack clean-plan \
+.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate validation-report train union diagnose separation promote rollback inject clean clean-stack clean-plan \
 	env-check up down ps logs spark-smoke detect detect-stop detect-check detect-reset db-migrate db-topology replay sink replay-check dashboards \
 	test-integration
 
@@ -64,8 +64,11 @@ train: env-check  ## Optuna study per detector candidate (own process: memory bu
 	done; \
 	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m models.tune --compare
 
-evaluate: env-check  ## Validation report: z-score baseline at a threshold vs the ground truth, logged to MLflow (ARGS="--threshold 4 [--start … --end …]")
+evaluate: env-check  ## Step 5 check: untuned z-score at a fixed threshold vs the ground truth, logged to MLflow (ARGS="--threshold 4 [--start … --end …]")
 	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m evaluation.report $(ARGS)
+
+validation-report: env-check  ## Milestone 2 validation report: champion vs tuned z-score baseline on validation weeks, both from MLflow (logged to detector-evaluation)
+	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m evaluation.validation_report $(ARGS)
 
 union: env-check  ## Union of the latest tuned detectors (each at its own threshold) vs each alone, on validation weeks (MLflow)
 	$(LOAD_ENV) MLFLOW_DISABLE_AGENT_HINT=1 uv run python -m models.ensemble $(ARGS)

@@ -277,3 +277,15 @@ def test_level_offset_counts_only_rows_with_a_baseline() -> None:
 def test_config_rejects_a_bad_load_curve(update: dict[str, object]) -> None:
     with pytest.raises(ValidationError):
         ft.Config(**{**CFG.model_dump(), **update})
+
+
+def test_a_spec_matches_only_the_same_config_and_fitted_reference() -> None:
+    ref = flat_baseline(["CELL-1-1"])
+    spec = ft.Spec(ft.load_config(), ref)
+    assert spec.matches(
+        ft.Spec(ft.load_config(), ft.Reference(ref.seasonal.clone(), ref.load_curve))
+    )
+    refit = ft.Reference(ref.seasonal, ref.load_curve.with_columns(pl.col("mean") + 1.0))
+    assert not spec.matches(ft.Spec(ft.load_config(), refit))
+    other = ft.load_config().model_copy(update={"windows": (2,)})
+    assert not spec.matches(ft.Spec(other, ref))

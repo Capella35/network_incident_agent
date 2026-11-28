@@ -47,24 +47,6 @@ def union(members: Sequence[tuple[pl.DataFrame, float]]) -> pl.DataFrame:
     )
 
 
-def _row(name: str, r: metrics.Result) -> str:
-    median, worst = metrics.caught_delays(r.outcomes)
-    return (
-        f"| {name} | {r.overall.detected}/{r.overall.observable} | {r.false_per_day:.2f} | "
-        f"{report.delay_text(r.overall.delay)} | {median} | {worst} |"
-    )
-
-
-def table(results: dict[str, metrics.Result]) -> str:
-    """Markdown: one row per member and the union."""
-    head = [
-        "| Detector | Faults detected | False incidents/day | KM median delay [CI] "
-        "| Median delay, detected | Worst delay |",
-        "|---|---:|---:|---|---:|---:|",
-    ]
-    return "\n".join([*head, *(_row(n, r) for n, r in results.items())]) + "\n"
-
-
 def run(data_dir: Path) -> str:
     """Measure every feasible member and their union on the validation weeks; log to MLflow.
     Raises ValueError with fewer than two feasible members."""
@@ -84,7 +66,7 @@ def run(data_dir: Path) -> str:
     results[name], _ = report.score(data_dir, union(members), days=v.days, gaps=v.gaps)
     seconds = time.perf_counter() - t0
     peak = process.check_budget("ensemble", detectors.load_config().memory_budget_mib)
-    md = table(results)
+    md = report.comparison_table(results)
     with tracking.start_run(tune.EXPERIMENT, run_name=name):
         mlflow.set_tags(
             {

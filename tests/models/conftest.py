@@ -57,6 +57,10 @@ def train() -> pl.DataFrame:
 
 @pytest.fixture
 def normal_with_outage() -> pl.DataFrame:
+    return outage_features()
+
+
+def outage_features() -> pl.DataFrame:
     """Normal rows (another seed) where all traffic stops for `OUTAGE` (a cell outage)."""
     rows = normal_rows(seed=2).with_row_index("_i")
     outage = pl.col("_i").is_in(list(OUTAGE))

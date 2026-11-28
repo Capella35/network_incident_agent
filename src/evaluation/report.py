@@ -80,6 +80,29 @@ def render(result: metrics.Result, *, title: str) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _comparison_row(name: str, r: metrics.Result) -> str:
+    median, worst = metrics.caught_delays(r.outcomes)
+    return (
+        f"| {name} | {r.overall.detected}/{r.overall.observable} | {r.false_per_day:.2f} | "
+        f"{delay_text(r.overall.delay)} | {median} | {worst} |"
+    )
+
+
+def comparison_table(results: dict[str, metrics.Result]) -> str:
+    """Markdown: one row per detector (the union ablation, the milestone validation report)."""
+    head = [
+        "| Detector | Faults detected | False incidents/day | KM median delay [CI] "
+        "| Median delay, detected | Worst delay |",
+        "|---|---:|---:|---|---:|---:|",
+    ]
+    return "\n".join([*head, *(_comparison_row(n, r) for n, r in results.items())]) + "\n"
+
+
+def outcomes_csv(result: metrics.Result) -> str:
+    """Per-fault outcomes as CSV, the MLflow artifact next to a report."""
+    return pl.DataFrame([asdict(o) for o in result.outcomes]).write_csv()
+
+
 def _summary_metrics(s: metrics.Summary, suffix: str = "") -> dict[str, float]:
     """Detection rate and KM delay (+ CI bounds) where defined, named `<metric>[.<type>]`."""
     values = {
@@ -152,8 +175,7 @@ def run(data_dir: Path, days: list[date], threshold: float) -> str:
         )
         mlflow.log_metrics(mlflow_metrics(result))
         mlflow.log_text(report, "report.md")
-        outcomes = pl.DataFrame([asdict(o) for o in result.outcomes]).write_csv()
-        mlflow.log_text(outcomes, "fault_outcomes.csv")
+        mlflow.log_text(outcomes_csv(result), "fault_outcomes.csv")
         mlflow.set_tags({"synthetic_faults": "yes", "split": str(splits.Split.VALIDATION)})
     return report
 
