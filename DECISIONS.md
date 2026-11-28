@@ -81,7 +81,7 @@ Seeded from the decision log and "Still open" list in `PROJECT.md` (2026-11-14).
 
 | Item | Notes |
 |---|---|
-| Groq model | Chosen at Milestone 5, by tool-calling reliability on the agent eval set (criterion unchanged). Current candidate: the model set as `LLM_MODEL` in the env file, **to be recorded here by the user** (Claude does not read the env file, Rule 8). |
+| Groq model | Chosen at Milestone 5, by tool-calling reliability on the agent eval set (criterion unchanged). **Current candidate (2026-11-28, given by the user from the env file's `LLM_MODEL`): `gpt-oss-120b`.** The exact model ID the provider's API expects, its tool-calling support, and its free-tier limits (C1, C5) are checked against the provider's current documentation at M5, not assumed. |
 | Prompt caching at the provider (M5) | Does the provider cache prompts for the chosen model? `06-ops-agent.md` §2 assumes the ontology card could be cached; nothing may depend on it until this is answered at M5 (with C1's free-tier terms). |
 | Data versioning | DVC vs. plain versioned snapshots (plain snapshots recommended) |
 | Owning team: lookup, not prediction (M4) | `faults.yaml` maps each fault type to exactly one team, and severity is fixed for every type except `congestion` (minor or major). Proposal: XGBoost predicts the fault category; team comes from a lookup; severity is predicted only for `congestion`. This would reverse `specs/05-classification.md`, which has XGBoost predict `owning_team` and `severity` directly. A wrong team then always traces back to a wrong category. Decide when planning Milestone 4. |
