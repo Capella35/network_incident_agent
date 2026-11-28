@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import timedelta
 from pathlib import Path
 
 import pytest
@@ -12,13 +13,22 @@ from common.domain import load_domain
 from common.domain.loader import KpiSource, Unit
 
 ROOT = Path(__file__).resolve().parents[2]
-COMMITTED = ROOT / grafana.DASHBOARD_DIR / "network-kpis.json"
 PROVISIONING = ROOT / "infra" / "grafana" / "provisioning"
 
 
-def test_committed_dashboard_matches_generator() -> None:
-    """Edit kpis.yaml or the generator, then run `make dashboards`; never edit the JSON."""
-    assert COMMITTED.read_text(encoding="utf-8") == grafana.render(grafana.network_kpis_dashboard())
+@pytest.mark.parametrize("name", sorted(grafana.DASHBOARDS))
+def test_committed_dashboards_match_generator(name: str) -> None:
+    """Edit kpis.yaml, grafana.yaml or the generator, then `make dashboards`; never the JSON."""
+    committed = ROOT / grafana.DASHBOARD_DIR / name
+    assert committed.read_text(encoding="utf-8") == grafana.render(grafana.DASHBOARDS[name]())
+
+
+@pytest.mark.parametrize("name", sorted(grafana.ALERT_RULES))
+def test_committed_alert_rules_match_generator(name: str) -> None:
+    committed = ROOT / grafana.ALERTING_DIR / name
+    assert committed.read_text(encoding="utf-8") == grafana.render_rules(
+        grafana.ALERT_RULES[name]()
+    )
 
 
 def test_every_unit_maps_to_grafana() -> None:
@@ -97,7 +107,51 @@ def test_dashboard_provider_points_at_mounted_folder() -> None:
     assert provider["allowUiUpdates"] is False
 
 
-def test_main_writes_dashboards(tmp_path: Path) -> None:
-    assert grafana.main(["--out-dir", str(tmp_path)]) == 0
+def test_main_writes_dashboards_and_rules(tmp_path: Path) -> None:
+    args = ["--out-dir", str(tmp_path), "--alerting-dir", str(tmp_path / "alerting")]
+    assert grafana.main(args) == 0
     written = json.loads((tmp_path / "network-kpis.json").read_text())
     assert written["uid"] == grafana.NETWORK_KPIS_UID
+    assert {p.name for p in tmp_path.glob("*.json")} == set(grafana.DASHBOARDS)
+    assert yaml.safe_load((tmp_path / "alerting" / "detector.yaml").read_text())["groups"]
+
+
+def test_dead_detector_rule_fires_on_waiting_telemetry_from_config() -> None:
+    health = grafana.load_health()
+    (group,) = grafana.dead_detector_rules()["groups"]
+    assert (
+        group["folder"] == grafana.FOLDER and group["interval"] == f"{health.alert_every_seconds}s"
+    )
+    (rule,) = group["rules"]
+    assert rule["for"] == f"{health.alert_for_minutes}m" and rule["noDataState"] == "OK"
+    query, threshold = (d["model"] for d in rule["data"])
+    assert query["rawSql"] == grafana.UNSCORED_MINUTES_SQL
+    assert query["datasource"] == grafana.DATASOURCE  # the readonly role (S4)
+    assert threshold["conditions"][0]["evaluator"] == {
+        "type": "gt",
+        "params": [health.dead_detector_minutes],
+    }
+    assert rule["condition"] == threshold["refId"]
+    for table in ("telemetry_raw", "ingested_at", "detector_heartbeats"):
+        assert table in grafana.UNSCORED_MINUTES_SQL
+
+
+def test_detection_dashboard_labels_synthetic_faults_and_reads_only_totals() -> None:
+    dash = grafana.detection_dashboard()
+    start = splits.bounds()[splits.Split.VALIDATION][0]  # local midnight: 23:00 UTC before
+    assert dash["time"]["from"] == f"{start - timedelta(days=1)}T23:00:00.000Z"
+    sqls = [t["rawSql"] for p in dash["panels"] for t in p["targets"]]
+    assert any("FROM alarms" in q for q in sqls) and any("FROM telemetry_raw" in q for q in sqls)
+    quality = [p for p in dash["panels"] if "detection_reports_latest" in p["targets"][0]["rawSql"]]
+    assert len(quality) == 3 and all("SYNTHETIC" in p["title"] for p in quality)  # Rule 9
+    assert not any("ground_truth" in q or "fault_id" in q for q in sqls)  # Rule 6: totals only
+
+
+def test_health_dashboard_shows_the_alert_and_its_value() -> None:
+    dash = grafana.detector_health_dashboard()
+    assert dash["time"] == {"from": "now-1h", "to": "now"}  # wall clock, not 2013
+    types = [p["type"] for p in dash["panels"]]
+    assert "alertlist" in types
+    stat = next(p for p in dash["panels"] if p["type"] == "stat")
+    assert stat["targets"][0]["rawSql"] == grafana.UNSCORED_MINUTES_SQL
+    assert [p["id"] for p in dash["panels"]] == list(range(1, len(types) + 1))

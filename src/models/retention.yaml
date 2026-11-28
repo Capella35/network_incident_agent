@@ -1,0 +1,6 @@
+# MLflow run retention for `make clean` (src/models/prune.py; guardrail R3).
+version: 1
+# Newest finished top-level runs kept per experiment and (role, candidate) group, beyond the
+# runs a registered model version came from and those evals/results-log.md cites. Three keeps
+# the latest study of each candidate and the two before it for comparison.
+keep_per_group: 3

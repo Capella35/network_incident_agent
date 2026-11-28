@@ -16,6 +16,8 @@ Needs the stack and the detector job (`make up`, `make detect`), and reads the j
 4. Compares the day's alarms: the same IDs, and per ID the same score (exactly: no tolerance,
    `DECISIONS.md` 2026-11-27) and KPIs; then the validation report (`evaluation.report`) of
    each set against the ground truth, which must be identical too.
+5. Stores the streamed alarms' totals for the day (faults, detected, delay, false incidents;
+   no fault labels) in Postgres `detection_reports`, for Grafana's detection dashboard.
 
 Exit 0 only if everything matches. Validation days only (Rule 7); the ground truth is read only
 through `evaluation.report.score` (Rule 6).
@@ -40,8 +42,8 @@ from confluent_kafka import KafkaException
 from psycopg import sql
 
 from common import kafka, splits, telemetry
-from common.db import DbConfigError, DbSettings, Role
-from evaluation import report
+from common.db import DbConfigError, DbSettings, Role, insert_into
+from evaluation import metrics, report
 from models import cli
 from producer import milan, replay
 from streaming import job, offline, scoring
@@ -81,11 +83,16 @@ class Report:
     streamed: int  # alarms on the day
     offline: int
     differences: list[str]
-    validation_report: str  # of the streamed alarms (equal to the offline one unless listed)
+    result: metrics.Result  # validation result of the streamed alarms
+    detector_version: str
 
     @property
     def ok(self) -> bool:
         return not self.differences
+
+    @property
+    def validation_report(self) -> str:  # equal to the offline one unless listed as a difference
+        return _render_result(self.result, self.day)
 
 
 def compare(streamed: pl.DataFrame, offline_: pl.DataFrame) -> list[str]:
@@ -177,9 +184,37 @@ def _replay(data_dir: Path, producer: Any, days: list[date], run: str, *, inject
     return summary.sent
 
 
-def _report(data_dir: Path, alarms: pl.DataFrame, day: date, gaps: pl.DataFrame) -> str:
-    result = report.score(data_dir, alarms, days=[day], gaps=gaps)[0]
+def _render_result(result: metrics.Result, day: date) -> str:
     return report.render(result, title=f"Validation report, {day}")
+
+
+REPORTS = "detection_reports"  # infra/db/004_detection_health.sql
+
+
+def report_row(r: Report) -> dict[str, object]:
+    """`r` as a `detection_reports` row (column -> value): totals only, no fault labels."""
+    s = r.result.overall
+    return {
+        "replay_run_id": r.run,
+        "day": r.day,
+        "detector_version": r.detector_version,
+        "faults": s.faults,
+        "unobservable": s.unobservable,
+        "detected": s.detected,
+        "delay_median": s.delay.value,
+        "delay_low": s.delay.low,
+        "delay_high": s.delay.high,
+        "incidents": r.result.incidents,
+        "false_incidents": r.result.false_incidents,
+        "parity": r.ok,
+    }
+
+
+def store(conn: psycopg.Connection[Any], r: Report) -> None:
+    row = report_row(r)
+    query = insert_into(REPORTS, list(row)) + sql.SQL(" ON CONFLICT DO NOTHING")
+    with conn.transaction():
+        conn.execute(query, tuple(row.values()))
 
 
 def run_check(
@@ -204,10 +239,20 @@ def run_check(
     offline_ = scorer.alarms(frame, run)
     differences = compare(streamed, offline_)
     gaps = report.gaps(frame)
-    streamed_report = _report(data_dir, streamed, day, gaps)
-    if streamed_report != _report(data_dir, offline_, day, gaps):
+    result, offline_result = (
+        report.score(data_dir, a, days=[day], gaps=gaps)[0] for a in (streamed, offline_)
+    )
+    if _render_result(result, day) != _render_result(offline_result, day):
         differences.append("the validation reports differ")
-    return Report(day, run, streamed.height, offline_.height, differences, streamed_report)
+    return Report(
+        day,
+        run,
+        streamed.height,
+        offline_.height,
+        differences,
+        result=result,
+        detector_version=scorer.detector_version,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -228,7 +273,13 @@ def main(argv: list[str] | None = None) -> int:
     except (CheckError, DbConfigError, psycopg.Error, KafkaException, *cli.RUN_ERRORS) as exc:
         log.error("%s", exc)
         return 1
-    print(render(r))
+    print(render(r), flush=True)  # the verdict first: a failed store must not hide it
+    try:
+        with DbSettings.from_env(Role.PIPELINE_WRITER).connect() as conn:
+            store(conn, r)
+    except (DbConfigError, psycopg.Error) as exc:
+        log.error("the day's totals were not stored in %s (make db-migrate?): %s", REPORTS, exc)
+        return 1
     return 0 if r.ok else 1
 
 

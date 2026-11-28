@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 import psycopg
+from confluent_kafka import KafkaError, KafkaException
 from psycopg import sql
 from pydantic import ValidationError
 
@@ -123,14 +124,16 @@ def parse(msg: Message) -> TelemetryMessage | DeadLetter:
 
 
 def upsert_statement() -> sql.Composed:
-    """INSERT ... ON CONFLICT (pk) DO UPDATE: re-delivered messages overwrite, never duplicate."""
+    """INSERT ... ON CONFLICT (pk) DO UPDATE: re-delivered messages overwrite, never duplicate.
+    `ingested_at` stays the first store's: the dead-detector alert reads it as "arrived", and a
+    re-delivery is not new telemetry."""
     updates = sql.SQL(", ").join(
         sql.SQL("{c} = EXCLUDED.{c}").format(c=sql.Identifier(c))
         for c in COLUMNS
         if c not in PRIMARY_KEY
     )
     return insert_into(TABLE, COLUMNS) + sql.SQL(
-        " ON CONFLICT ({pk}) DO UPDATE SET {updates}, ingested_at = now()"
+        " ON CONFLICT ({pk}) DO UPDATE SET {updates}"
     ).format(pk=sql.SQL(", ").join(map(sql.Identifier, PRIMARY_KEY)), updates=updates)
 
 
@@ -174,6 +177,7 @@ class Summary:
     dead_lettered: int = 0
     batches: int = 0
     kafka_errors: list[str] = field(default_factory=list)
+    commit_pending: bool = False  # the last offset commit failed (retriable): commit again
 
 
 def process_batch(
@@ -210,7 +214,20 @@ def process_batch(
         raise SinkError("dead-letter topic did not acknowledge; offsets not committed")
     summary.dead_lettered += len(dead)
 
-    consumer.commit(asynchronous=False)  # 3. only now: Kafka offsets
+    try:  # 3. only now: Kafka offsets
+        consumer.commit(asynchronous=False)
+        summary.commit_pending = False
+    except KafkaException as exc:
+        # Commits are cumulative and the upsert idempotent: the next commit (the next batch's,
+        # or the one at the end of `run`) covers these offsets. NOT_COORDINATOR while the group
+        # coordinator reloads (~42 s under load, 2026-11-28) stopped the sink twice. Anything
+        # else stops it.
+        err = exc.args[0] if exc.args else None
+        if not (isinstance(err, KafkaError) and err.retriable()):
+            raise
+        log.warning("offset commit failed (%s); the next commit covers it", exc)
+        summary.kafka_errors.append(str(exc))
+        summary.commit_pending = True
     summary.batches += 1
 
 
@@ -260,6 +277,9 @@ def run(
                 log.info(
                     "progress: %d written, %d dead-lettered", summary.written, summary.dead_lettered
                 )
+        if summary.commit_pending:  # the last batch's commit failed: once more, or fail loudly
+            consumer.commit(asynchronous=False)
+            summary.commit_pending = False
     finally:
         consumer.close()  # leaves the group cleanly; uncommitted batches are re-delivered
     return summary
