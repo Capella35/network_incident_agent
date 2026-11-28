@@ -1,0 +1,221 @@
+{
+  "description": "Detector alarms and their quality on checked validation days. Faults are SYNTHETIC (validation weeks); incidents use the provisional M2 grouping.",
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "netops-postgres"
+      },
+      "description": "Cell-intervals in telemetry_raw (filled by `make sink`) and alarms the detector raised. Topology and latency / load KPIs are synthetic/modeled.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "netops-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(interval_start, '1h'), count(*) AS telemetry_rows\nFROM telemetry_raw\nWHERE replay_run_id = '$run' AND $__timeFilter(interval_start)\nGROUP BY 1 ORDER BY 1",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "netops-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(interval_start, '1h'), count(*) AS alarms\nFROM alarms\nWHERE replay_run_id = '$run' AND $__timeFilter(interval_start)\nGROUP BY 1 ORDER BY 1",
+          "refId": "B"
+        }
+      ],
+      "title": "Alarms vs telemetry per hour (replay run $run)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "netops-postgres"
+      },
+      "description": "Faults are SYNTHETIC (validation weeks); incidents use the provisional M2 grouping.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "netops-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT day::timestamptz AS time, false_incidents\nFROM detection_reports_latest WHERE $__timeFilter(day::timestamptz) ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "False incidents per checked day (SYNTHETIC faults)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "netops-postgres"
+      },
+      "description": "Faults are SYNTHETIC (validation weeks); incidents use the provisional M2 grouping.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 60
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "netops-postgres"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT day::timestamptz AS time, delay_median, delay_low, delay_high\nFROM detection_reports_latest WHERE $__timeFilter(day::timestamptz) ORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "Detection delay, Kaplan-Meier median (intervals; SYNTHETIC faults)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "netops-postgres"
+      },
+      "description": "Faults are SYNTHETIC (validation weeks); incidents use the provisional M2 grouping. parity: streamed alarms == offline scoring.",
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "id": 4,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "netops-postgres"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT day, detector_version, faults, unobservable, detected,\n  round(detected::numeric / nullif(faults - unobservable, 0), 3) AS detection_rate,\n  delay_median, delay_low, delay_high, incidents, false_incidents, parity,\n  replay_run_id\nFROM detection_reports_latest WHERE $__timeFilter(day::timestamptz) ORDER BY day",
+          "refId": "A"
+        }
+      ],
+      "title": "Checked days (make detect-check; SYNTHETIC faults)",
+      "type": "table"
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": [
+    "netops",
+    "synthetic-topology"
+  ],
+  "templating": {
+    "list": [
+      {
+        "datasource": {
+          "type": "grafana-postgresql-datasource",
+          "uid": "netops-postgres"
+        },
+        "definition": "SELECT replay_run_id FROM alarms GROUP BY 1 ORDER BY max(stored_at) DESC",
+        "label": "Replay run",
+        "name": "run",
+        "query": "SELECT replay_run_id FROM alarms GROUP BY 1 ORDER BY max(stored_at) DESC",
+        "refresh": 1,
+        "sort": 0,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "2013-12-01T23:00:00.000Z",
+    "to": "2013-12-15T23:00:00.000Z"
+  },
+  "timezone": "utc",
+  "title": "Detection (milestone 2)",
+  "uid": "netops-detection",
+  "version": 1
+}

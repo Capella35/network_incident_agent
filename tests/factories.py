@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -12,6 +12,7 @@ import polars as pl
 from common import alarms, telemetry
 from common.alarms import AlarmMessage
 from common.telemetry import TelemetryMessage
+from evaluation import detect_check, metrics
 from models import detectors
 from streaming import features, scoring
 
@@ -151,3 +152,27 @@ def alarm_frame(*messages: AlarmMessage) -> pl.DataFrame:
     """Alarm messages as a frame of `streaming.scoring.NO_ALARMS` columns and types."""
     rows = [m.model_dump(exclude={"schema_version"}) for m in messages]
     return pl.DataFrame(rows, schema=scoring.NO_ALARMS.schema)
+
+
+CHECK_DAY = date(2013, 12, 3)  # a validation day
+CHECK_RESULT = metrics.Result(  # 4 faults (1 all gaps), 2 caught; 3 incidents, 1 false
+    days=(CHECK_DAY,),
+    overall=metrics.Summary(4, 1, 2, metrics.Median(1, 0, None)),
+    by_type={},
+    incidents=3,
+    false_incidents=1,
+    outcomes=(),
+)
+
+
+def check_report(differences: list[str]) -> detect_check.Report:
+    """A parity-check report of `CHECK_DAY` (MATCH when `differences` is empty)."""
+    return detect_check.Report(
+        CHECK_DAY,
+        "detect-check-x",
+        2,
+        2,
+        differences,
+        result=CHECK_RESULT,
+        detector_version="detector/1",
+    )

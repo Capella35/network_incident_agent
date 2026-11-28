@@ -11,7 +11,7 @@ import pytest
 
 from common import telemetry
 from evaluation import detect_check as dc
-from tests.factories import ALARM_AT, alarm_frame, alarm_message
+from tests.factories import ALARM_AT, CHECK_DAY, alarm_frame, alarm_message, check_report
 
 
 def test_history_from_an_earlier_split_is_replayed_clean() -> None:
@@ -48,15 +48,33 @@ def test_every_kind_of_difference_is_listed() -> None:
 
 
 def test_render_states_the_verdict() -> None:
-    report = "# Validation report\n"
-    r = dc.Report(date(2013, 12, 3), "detect-check-x", 2, 2, [], report)
+    r = check_report([])
     assert "MATCH" in dc.render(r)
     assert "SYNTHETIC" in dc.render(r)
-    assert dc.render(r).endswith(report)
+    assert dc.render(r).endswith(r.validation_report)
+    assert r.validation_report.startswith(f"# Validation report, {CHECK_DAY}")
     many = [f"d{i}" for i in range(dc.SHOWN + 3)]
-    text = dc.render(dc.Report(date(2013, 12, 3), "detect-check-x", 2, 2, many, report))
+    text = dc.render(check_report(many))
     assert f"MISMATCH ({dc.SHOWN + 3} differences)" in text
     assert "… 3 more" in text
+
+
+def test_stored_row_holds_totals_and_the_verdict() -> None:
+    assert dc.report_row(check_report([])) == {
+        "replay_run_id": "detect-check-x",
+        "day": CHECK_DAY,
+        "detector_version": "detector/1",
+        "faults": 4,
+        "unobservable": 1,
+        "detected": 2,
+        "delay_median": 1,
+        "delay_low": 0,
+        "delay_high": None,
+        "incidents": 3,
+        "false_incidents": 1,
+        "parity": True,
+    }
+    assert dc.report_row(check_report(["only streamed: x"]))["parity"] is False
 
 
 def write_batch(checkpoint: Path, batch: int, offsets: dict[str, int], *, done: bool) -> None:

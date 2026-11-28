@@ -1,0 +1,11 @@
+# Grafana settings the generator reads (src/common/grafana.py; `make dashboards`).
+version: 1
+# Dead-detector alert (specs/03-detection.md, "a dead detector alerts"): fires when telemetry has
+# waited this many minutes in Postgres with no detector heartbeat after it. Wall-clock minutes,
+# not data intervals: a replay's speed decouples the two (at --speed 0 a day of data arrives in
+# about a minute), while a live detector writes a heartbeat per micro-batch (trigger 10 s, at
+# most one local day of rows per batch), so a live one never leaves telemetry waiting this long.
+dead_detector_minutes: 5
+# How often Grafana evaluates the rule, and how long it must hold before it fires.
+alert_every_seconds: 60
+alert_for_minutes: 1

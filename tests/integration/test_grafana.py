@@ -125,3 +125,26 @@ def test_panel_query_returns_stored_rows() -> None:
     points = _rows(result)
     assert points, "panel query returned no rows for the latest run"
     assert all(v is not None and v >= 0 for _, _, v in points)
+
+
+@pytest.mark.parametrize("uid", [grafana.DETECTION_UID, grafana.DETECTOR_HEALTH_UID])
+def test_detection_dashboards_provisioned_and_their_queries_run(uid: str) -> None:
+    status, doc = _api(f"/api/dashboards/uid/{uid}")
+    assert status == 200 and doc["meta"]["provisioned"] is True
+    for panel in doc["dashboard"]["panels"]:
+        for target in panel.get("targets", []):
+            sql = target["rawSql"].replace("$run", "no-such-run")
+            status, result = _query(sql, "2013-12-01T00:00:00Z", "2013-12-16T00:00:00Z")
+            assert status == 200, (panel["title"], result)
+
+
+def test_dead_detector_rule_provisioned_and_healthy() -> None:
+    status, rule = _api(f"/api/v1/provisioning/alert-rules/{grafana.DEAD_DETECTOR_UID}")
+    assert status == 200, rule
+    assert rule["data"][0]["model"]["rawSql"] == grafana.UNSCORED_MINUTES_SQL
+    status, rules = _api("/api/prometheus/grafana/api/v1/rules")
+    assert status == 200
+    (found,) = [
+        r for g in rules["data"]["groups"] for r in g["rules"] if r["name"] == "Dead detector"
+    ]
+    assert found["health"] in {"ok", "unknown"}, found  # "unknown" before its first evaluation

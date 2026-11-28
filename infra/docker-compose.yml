@@ -149,7 +149,7 @@ services:
       - --host=0.0.0.0  # inside the container only; the host side is 127.0.0.1
       - --port=5000
       - --workers=1
-      - --backend-store-uri=sqlite:////mlflow/mlflow.db
+      - --backend-store-uri=sqlite:////mlflow/mlflow.db  # also `mlflow gc` in make clean-stack
       - --artifacts-destination=/mlflow/artifacts
       - --allowed-hosts=localhost,localhost:${MLFLOW_PORT:-5001},127.0.0.1,127.0.0.1:${MLFLOW_PORT:-5001},mlflow,mlflow:5000
     ports:
@@ -256,7 +256,8 @@ services:
   # the offline side runs the same code and libraries as the job. Reads data/ (read-only: the
   # replay's processed days and, through src/evaluation only, the SYNTHETIC ground truth), the
   # job's checkpoint (read-only: which offsets it has committed), and Postgres as `readonly`;
-  # sends the replay to Kafka. Needs `make detect` running.
+  # sends the replay to Kafka and stores the day's totals in `detection_reports` (Step 10).
+  # Needs `make detect` running.
   detect-check:
     build: *detector-build
     image: *detector-image
@@ -279,6 +280,9 @@ services:
       POSTGRES_PORT: "5432"
       POSTGRES_DB: ${POSTGRES_DB:-netops}
       READONLY_PASSWORD: ${READONLY_PASSWORD:?set READONLY_PASSWORD in .env}
+      # Step 10: stores the day's totals in detection_reports. The role can also write the
+      # pipeline's tables (alarms, telemetry); a narrower role needs its own password (open item).
+      PIPELINE_WRITER_PASSWORD: ${PIPELINE_WRITER_PASSWORD:?set PIPELINE_WRITER_PASSWORD in .env}
       POLARS_MAX_THREADS: "1"  # the job's thread settings, so the offline side computes alike
       OMP_NUM_THREADS: "1"
       OPENBLAS_NUM_THREADS: "1"

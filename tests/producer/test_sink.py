@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Literal
 
 import pytest
+from confluent_kafka import KafkaError, KafkaException
 
 from common import kafka, telemetry
 from common.telemetry import TelemetryMessage
@@ -32,6 +33,7 @@ class FakeConsumer:
     batches: list[list[FakeKafkaMessage]] = field(default_factory=list)
     commits: int = 0
     closed: bool = False
+    commit_error: KafkaException | None = None
 
     def consume(self, num_messages: int, timeout: float) -> Sequence[FakeKafkaMessage]:
         return self.batches.pop(0) if self.batches else []
@@ -39,6 +41,8 @@ class FakeConsumer:
     def commit(self, *, asynchronous: Literal[False]) -> object:
         self.commits += 1
         self.events.log.append("commit")
+        if self.commit_error is not None:
+            raise self.commit_error
         return None
 
     def close(self) -> None:
@@ -120,7 +124,8 @@ def test_upsert_statement_covers_every_field_and_keys_on_pk() -> None:
     assert set(sink.COLUMNS) == set(TelemetryMessage.model_fields)
     assert set(sink.PRIMARY_KEY) <= set(sink.COLUMNS)
     text = repr(sink.upsert_statement())
-    assert "ON CONFLICT" in text and "EXCLUDED" in text and "ingested_at = now()" in text
+    assert "ON CONFLICT" in text and "EXCLUDED" in text
+    assert "ingested_at" not in text  # a re-delivery keeps the first store's arrival time
     for c in sink.COLUMNS:
         assert f"Identifier('{c}')" in text
 
@@ -189,6 +194,37 @@ def test_transport_errors_are_reported_not_stored() -> None:
     )
     assert s.kafka_errors == ["broker gone"] and (s.consumed, s.written) == (1, 1)
     assert dlq.sent == []
+
+
+def test_a_retriable_commit_failure_is_left_to_the_next_commit() -> None:
+    _ev, consumer, writer, dlq = wiring([])
+    consumer.commit_error = KafkaException(
+        KafkaError(KafkaError.NOT_COORDINATOR, "Not coordinator", retriable=True)
+    )
+    s = sink.Summary()
+    sink.process_batch([kmsg(msg())], writer, dlq, consumer, s)
+    assert s.written == 1 and s.batches == 1 and "Not coordinator" in s.kafka_errors[0]
+    assert s.commit_pending
+    consumer.commit_error = KafkaException(KafkaError(KafkaError._INVALID_ARG, "bad"))
+    with pytest.raises(KafkaException):
+        sink.process_batch([kmsg(msg())], writer, dlq, consumer, sink.Summary())
+    consumer.commit_error = KafkaException("no KafkaError inside")
+    with pytest.raises(KafkaException, match="no KafkaError"):
+        sink.process_batch([kmsg(msg())], writer, dlq, consumer, sink.Summary())
+
+
+def test_a_failed_last_commit_is_retried_before_the_sink_stops() -> None:
+    _ev, consumer, writer, dlq = wiring([[kmsg(msg())]])
+    errors = [KafkaException(KafkaError(KafkaError.NOT_COORDINATOR, "nc", retriable=True))]
+
+    def commit_once_failing(*, asynchronous: Literal[False]) -> None:
+        consumer.commits += 1
+        if errors:
+            raise errors.pop()
+
+    consumer.commit = commit_once_failing  # type: ignore[method-assign]
+    s = sink.run(consumer, writer, dlq, sink.LoopSettings(idle_exit=0.0), clock=lambda: 0.0)
+    assert consumer.commits == 2 and not s.commit_pending and consumer.closed
 
 
 def test_redelivery_is_idempotent() -> None:

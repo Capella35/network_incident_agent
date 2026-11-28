@@ -1,4 +1,4 @@
-.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate train union diagnose separation promote rollback inject clean \
+.PHONY: help setup lint format typecheck test check data topology calibrate baseline features candidates evaluate train union diagnose separation promote rollback inject clean clean-stack clean-plan \
 	env-check up down ps logs spark-smoke detect detect-stop detect-check detect-reset db-migrate db-topology replay sink replay-check dashboards \
 	test-integration
 
@@ -138,6 +138,25 @@ dashboards:  ## Regenerate Grafana dashboards from kpis.yaml -> infra/grafana/da
 test-integration: env-check  ## Integration tests against the running stack (not in CI)
 	@$(LOAD_ENV) uv run pytest -m integration -p no:cacheprovider
 
-clean:  ## Remove local caches (data/ is never touched)
-	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov
-	find . -path ./.venv -prune -o -name __pycache__ -type d -exec rm -rf {} +
+# Guardrail R3. Container logs rotate on their own (x-base: json-file, 3 x 10 MB per service).
+clean:  ## Caches + logs; with the stack up also MLflow runs beyond retention and (detector stopped) its checkpoint; data/ never touched
+	rm -rf .pytest_cache .mypy_cache .ruff_cache .coverage htmlcov logs
+	find . \( -path ./.venv -o -path ./data -o -path ./.git \) -prune -o \
+		\( -name __pycache__ -type d -o -name '*.log' -type f \) -exec rm -rf {} +
+	@if [ -f .env ] && $(COMPOSE) ps --status running --services 2>/dev/null | grep -qx mlflow; then \
+		$(MAKE) --no-print-directory clean-stack; \
+	else echo "stack not running: detector checkpoint and MLflow runs left as they are"; fi
+
+# A running detector keeps its checkpoint: removing it mid-run loses its state and forces a full
+# re-score (make detect-stop first, or make detect-reset).
+clean-stack: env-check  ## The stack part of make clean: checkpoint (detector stopped), MLflow runs beyond models/retention.yaml, mlflow gc
+	@if $(COMPOSE) --profile spark ps --status running --status restarting --status paused --status created \
+			--services 2>/dev/null | grep -qx detector; then \
+		echo "detector running: its checkpoint is kept (make detect-stop, then make clean)"; \
+	else $(MAKE) --no-print-directory detect-reset; fi
+	@$(LOAD_ENV) uv run python -m models.prune
+	@# the store URI is the mlflow service's --backend-store-uri (infra/docker-compose.yml)
+	$(COMPOSE) exec -T mlflow sh -c 'MLFLOW_TRACKING_URI=http://localhost:5000 mlflow gc --backend-store-uri sqlite:////mlflow/mlflow.db'
+
+clean-plan: env-check  ## List the MLflow runs make clean would delete (nothing is changed)
+	@$(LOAD_ENV) uv run python -m models.prune --dry-run
